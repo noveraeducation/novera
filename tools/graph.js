@@ -1,572 +1,340 @@
 /* =========================================================
-   NOVERA — UNIVERSAL GRAPH ENGINE
-   Easy to use • Flexible • No external libraries
-   ========================================================= */
+   NOVERA GRAPH ENGINE V2.0
+========================================================= */
 
 (function () {
   "use strict";
 
-  const NOVERA_GRAPH = {
-
-    name: "Novera Graphing",
-    version: "1.0",
-
-    /* =====================================================
-       BASIC POINT OPERATIONS
-    ===================================================== */
-
-    point(x, y) {
-      return {
-        x: Number(x),
-        y: Number(y)
-      };
-    },
-
-    distance(x1, y1, x2, y2) {
-      return Math.sqrt(
-        Math.pow(Number(x2) - Number(x1), 2) +
-        Math.pow(Number(y2) - Number(y1), 2)
-      );
-    },
-
-    midpoint(x1, y1, x2, y2) {
-      return {
-        x: (Number(x1) + Number(x2)) / 2,
-        y: (Number(y1) + Number(y2)) / 2
-      };
-    },
-
-    slope(x1, y1, x2, y2) {
-
-      x1 = Number(x1);
-      y1 = Number(y1);
-      x2 = Number(x2);
-      y2 = Number(y2);
-
-      if (x1 === x2) {
-        return {
-          type: "undefined",
-          value: null,
-          message: "Vertical line"
-        };
-      }
-
-      return {
-        type: "defined",
-        value: (y2 - y1) / (x2 - x1)
-      };
-    },
-
-
-    /* =====================================================
-       LINEAR FUNCTIONS
-       y = mx + c
-    ===================================================== */
-
-    linear(m, c) {
-
-      m = Number(m);
-      c = Number(c);
-
-      return {
-        type: "linear",
-        equation: `y = ${m}x + ${c}`,
-
-        evaluate(x) {
-          return (m * Number(x)) + c;
-        },
-
-        slope: m,
-        yIntercept: c
-      };
-    },
-
-
-    /* =====================================================
-       QUADRATIC FUNCTIONS
-       y = ax² + bx + c
-    ===================================================== */
-
-    quadratic(a, b, c) {
-
-      a = Number(a);
-      b = Number(b);
-      c = Number(c);
-
-      if (a === 0) {
-        return this.linear(b, c);
-      }
-
-      const discriminant =
-        Math.pow(b, 2) - (4 * a * c);
-
-      const vertexX =
-        -b / (2 * a);
-
-      const vertexY =
-        a * Math.pow(vertexX, 2) +
-        b * vertexX +
-        c;
-
-      return {
-        type: "quadratic",
-
-        equation:
-          `y = ${a}x² + ${b}x + ${c}`,
-
-        evaluate(x) {
-
-          x = Number(x);
-
-          return (
-            a * Math.pow(x, 2) +
-            b * x +
-            c
-          );
-        },
-
-        vertex: {
-          x: vertexX,
-          y: vertexY
-        },
-
-        discriminant,
-
-        opensUpward: a > 0,
-
-        yIntercept: c
-      };
-    },
-
-
-    /* =====================================================
-       TRIGONOMETRIC FUNCTIONS
-       ANGLES ARE IN RADIANS INTERNALLY
-    ===================================================== */
-
-    sine(amplitude = 1, frequency = 1, phase = 0) {
-
-      return {
-        type: "sine",
-
-        evaluate(x) {
-          return Number(amplitude) *
-            Math.sin(
-              Number(frequency) *
-              Number(x) +
-              Number(phase)
-            );
-        }
-      };
-    },
-
-    cosine(amplitude = 1, frequency = 1, phase = 0) {
-
-      return {
-        type: "cosine",
-
-        evaluate(x) {
-          return Number(amplitude) *
-            Math.cos(
-              Number(frequency) *
-              Number(x) +
-              Number(phase)
-            );
-        }
-      };
-    },
-
-    tangent(frequency = 1, phase = 0) {
-
-      return {
-        type: "tangent",
-
-        evaluate(x) {
-          return Math.tan(
-            Number(frequency) *
-            Number(x) +
-            Number(phase)
-          );
-        }
-      };
-    },
-
-
-    /* =====================================================
-       EXPONENTIAL
-       y = a × bˣ
-    ===================================================== */
-
-    exponential(a, b) {
-
-      a = Number(a);
-      b = Number(b);
-
-      return {
-        type: "exponential",
-
-        equation: `y = ${a} × ${b}^x`,
-
-        evaluate(x) {
-          return a * Math.pow(b, Number(x));
-        }
-      };
-    },
-
-
-    /* =====================================================
-       LOGARITHMIC
-       y = a log_b(x)
-    ===================================================== */
-
-    logarithmic(a = 1, base = Math.E) {
-
-      a = Number(a);
-      base = Number(base);
-
-      if (base <= 0 || base === 1) {
-        throw new Error(
-          "Logarithm base must be positive and not equal to 1."
-        );
-      }
-
-      return {
-        type: "logarithmic",
-
-        evaluate(x) {
-
-          x = Number(x);
-
-          if (x <= 0) {
-            return NaN;
-          }
-
-          return a *
-            (Math.log(x) / Math.log(base));
-        }
-      };
-    },
-
-
-    /* =====================================================
-       POLYNOMIAL
-       coefficients:
-       [a, b, c] → ax² + bx + c
-    ===================================================== */
-
-    polynomial(coefficients) {
-
-      if (!Array.isArray(coefficients) ||
-          coefficients.length === 0) {
-        throw new Error("Enter polynomial coefficients.");
-      }
-
-      const values =
-        coefficients.map(Number);
-
-      return {
-
-        type: "polynomial",
-
-        evaluate(x) {
-
-          x = Number(x);
-
-          return values.reduce(
-            (sum, coefficient) =>
-              (sum * x) + coefficient,
-            0
-          );
-        },
-
-        degree: values.length - 1
-      };
-    },
-
-
-    /* =====================================================
-       INTERSECTION OF TWO LINEAR FUNCTIONS
-    ===================================================== */
-
-    linearIntersection(m1, c1, m2, c2) {
-
-      m1 = Number(m1);
-      c1 = Number(c1);
-      m2 = Number(m2);
-      c2 = Number(c2);
-
-      if (m1 === m2) {
-
-        if (c1 === c2) {
-          return {
-            type: "same-line",
-            message: "The two lines overlap."
-          };
-        }
-
-        return {
-          type: "parallel",
-          message: "The two lines are parallel."
-        };
-      }
-
-      const x =
-        (c2 - c1) / (m1 - m2);
-
-      const y =
-        (m1 * x) + c1;
-
-      return {
-        type: "single",
-        point: { x, y }
-      };
-    },
-
-
-    /* =====================================================
-       X INTERCEPT OF A LINE
-       y = mx + c
-    ===================================================== */
-
-    xIntercept(m, c) {
-
-      m = Number(m);
-      c = Number(c);
-
-      if (m === 0) {
-
-        if (c === 0) {
-          return {
-            type: "infinite"
-          };
-        }
-
-        return {
-          type: "none"
-        };
-      }
-
-      return {
-        x: -c / m,
-        y: 0
-      };
-    },
-
-
-    /* =====================================================
-       Y INTERCEPT
-    ===================================================== */
-
-    yIntercept(m, c) {
-
-      return {
-        x: 0,
-        y: Number(c)
-      };
-    },
-
-
-    /* =====================================================
-       QUADRATIC ROOTS
-    ===================================================== */
-
-    quadraticRoots(a, b, c) {
-
-      a = Number(a);
-      b = Number(b);
-      c = Number(c);
-
-      if (a === 0) {
-
-        const linearRoot =
-          this.xIntercept(b, c);
-
-        return linearRoot;
-      }
-
-      const D =
-        Math.pow(b, 2) -
-        4 * a * c;
-
-      if (D > 0) {
-
-        const root =
-          Math.sqrt(D);
-
-        return {
-          type: "two-real",
-
-          roots: [
-            (-b + root) / (2 * a),
-            (-b - root) / (2 * a)
-          ]
-        };
-      }
-
-      if (D === 0) {
-
-        return {
-          type: "one-real",
-
-          roots: [
-            -b / (2 * a)
-          ]
-        };
-      }
-
-      const real =
-        -b / (2 * a);
-
-      const imaginary =
-        Math.sqrt(-D) /
-        Math.abs(2 * a);
-
-      return {
-        type: "complex",
-
-        roots: [
-          {
-            real,
-            imaginary
-          },
-          {
-            real,
-            imaginary: -imaginary
-          }
-        ]
-      };
-    },
-
-
-    /* =====================================================
-       CREATE GRAPH POINTS
-       Used by the visual graph renderer later.
-    ===================================================== */
-
-    generatePoints(functionObject, start, end, step = 0.1) {
-
-      if (!functionObject ||
-          typeof functionObject.evaluate !== "function") {
-        throw new Error("Invalid graph function.");
-      }
-
-      start = Number(start);
-      end = Number(end);
-      step = Number(step);
-
-      if (!Number.isFinite(start) ||
-          !Number.isFinite(end) ||
-          !Number.isFinite(step) ||
-          step <= 0) {
-        throw new Error("Invalid graph range.");
-      }
-
-      const points = [];
-
-      /*
-       * Safety limit prevents accidentally generating
-       * millions of points.
-       */
-      const maximumPoints = 10000;
-
-      let count = 0;
-
-      for (
-        let x = start;
-        x <= end && count < maximumPoints;
-        x += step
-      ) {
-
-        let y;
-
-        try {
-          y = functionObject.evaluate(x);
-        } catch {
-          y = NaN;
-        }
-
-        if (Number.isFinite(y)) {
-
-          points.push({
-            x,
-            y
-          });
-        }
-
-        count++;
-      }
-
-      return points;
-    },
-
-
-    /* =====================================================
-       RANGE
-    ===================================================== */
-
-    range(start, end, step = 1) {
-
-      start = Number(start);
-      end = Number(end);
-      step = Number(step);
-
-      if (step <= 0) {
-        throw new Error("Step must be greater than zero.");
-      }
-
-      const values = [];
-
-      for (
-        let value = start;
-        value <= end;
-        value += step
-      ) {
-
-        values.push(value);
-
-        if (values.length > 10000) {
-          break;
-        }
-      }
-
-      return values;
-    },
-
-
-    /* =====================================================
-       FORMAT NUMBER
-    ===================================================== */
-
-    format(value, decimals = 4) {
-
-      if (!Number.isFinite(Number(value))) {
-        return "Undefined";
-      }
-
-      const factor =
-        Math.pow(10, Number(decimals));
-
-      const rounded =
-        Math.round(
-          (Number(value) + Number.EPSILON) *
-          factor
-        ) / factor;
-
-      return Number(rounded).toLocaleString(
-        "en-IN",
-        {
-          maximumFractionDigits: decimals
-        }
-      );
+  function normalize(expression) {
+    return String(expression || "")
+      .trim()
+      .replace(/^y\s*=/i, "")
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
+      .replace(/−/g, "-")
+      .replace(/\^/g, "**")
+      .replace(/π/g, "Math.PI")
+      .replace(/\bsqrt\b/gi, "Math.sqrt")
+      .replace(/\bsin\b/gi, "Math.sin")
+      .replace(/\bcos\b/gi, "Math.cos")
+      .replace(/\btan\b/gi, "Math.tan")
+      .replace(/\blog\b/gi, "Math.log10")
+      .replace(/\bln\b/gi, "Math.log");
+  }
+
+  function createFunction(expression) {
+    const code = normalize(expression);
+
+    if (!code) {
+      throw new Error("Enter an equation.");
     }
 
+    // x, numbers, operators and common Math expressions only.
+    if (!/^[0-9xX+\-*/().,\sA-Za-z_*]+$/.test(code)) {
+      throw new Error("Invalid graph expression.");
+    }
+
+    try {
+      const fn = Function(
+        "x",
+        `"use strict"; return (${code});`
+      );
+
+      // Test once.
+      const test = fn(0);
+
+      if (
+        typeof test !== "number" &&
+        typeof test !== "undefined"
+      ) {
+        throw new Error();
+      }
+
+      return fn;
+    } catch {
+      throw new Error("Could not read this equation.");
+    }
+  }
+
+  function generatePoints(expression, min = -10, max = 10, step = 0.5) {
+    const fn = createFunction(expression);
+
+    const points = [];
+
+    min = Number(min);
+    max = Number(max);
+    step = Number(step);
+
+    if (!Number.isFinite(min) ||
+        !Number.isFinite(max) ||
+        !Number.isFinite(step) ||
+        step <= 0) {
+      throw new Error("Invalid graph range.");
+    }
+
+    if (max <= min) {
+      throw new Error("Maximum must be greater than minimum.");
+    }
+
+    const maxPoints = 5000;
+
+    let count = 0;
+
+    for (
+      let x = min;
+      x <= max + step / 2 && count < maxPoints;
+      x += step
+    ) {
+      let y;
+
+      try {
+        y = fn(x);
+      } catch {
+        y = NaN;
+      }
+
+      if (Number.isFinite(y)) {
+        points.push({
+          x,
+          y
+        });
+      }
+
+      count++;
+    }
+
+    return points;
+  }
+
+  function point(x, y) {
+    return {
+      x: Number(x),
+      y: Number(y)
+    };
+  }
+
+  function distance(x1, y1, x2, y2) {
+    return Math.sqrt(
+      (Number(x2) - Number(x1)) ** 2 +
+      (Number(y2) - Number(y1)) ** 2
+    );
+  }
+
+  function midpoint(x1, y1, x2, y2) {
+    return {
+      x: (Number(x1) + Number(x2)) / 2,
+      y: (Number(y1) + Number(y2)) / 2
+    };
+  }
+
+  function slope(x1, y1, x2, y2) {
+    x1 = Number(x1);
+    y1 = Number(y1);
+    x2 = Number(x2);
+    y2 = Number(y2);
+
+    if (x1 === x2) {
+      return Infinity;
+    }
+
+    return (y2 - y1) / (x2 - x1);
+  }
+
+  function linear(a, b) {
+    a = Number(a);
+    b = Number(b);
+
+    return createFunction(`${a}*x + ${b}`);
+  }
+
+  function quadratic(a, b, c) {
+    a = Number(a);
+    b = Number(b);
+    c = Number(c);
+
+    return createFunction(
+      `${a}*x**2 + ${b}*x + ${c}`
+    );
+  }
+
+  function quadraticRoots(a, b, c) {
+    a = Number(a);
+    b = Number(b);
+    c = Number(c);
+
+    if (a === 0) {
+      if (b === 0) return [];
+
+      return [-c / b];
+    }
+
+    const D = b * b - 4 * a * c;
+
+    if (D < 0) {
+      return [];
+    }
+
+    if (D === 0) {
+      return [-b / (2 * a)];
+    }
+
+    return [
+      (-b + Math.sqrt(D)) / (2 * a),
+      (-b - Math.sqrt(D)) / (2 * a)
+    ];
+  }
+
+  function intercepts(expression, min = -100, max = 100) {
+    const fn = createFunction(expression);
+
+    const roots = [];
+
+    const step = 0.05;
+
+    let previousX = min;
+    let previousY = fn(previousX);
+
+    for (
+      let x = min + step;
+      x <= max;
+      x += step
+    ) {
+      const y = fn(x);
+
+      if (
+        Number.isFinite(previousY) &&
+        Number.isFinite(y)
+      ) {
+        if (previousY === 0) {
+          roots.push(previousX);
+        }
+
+        if (previousY * y < 0) {
+          let left = previousX;
+          let right = x;
+
+          for (let i = 0; i < 50; i++) {
+            const middle = (left + right) / 2;
+            const value = fn(middle);
+
+            if (previousY * value <= 0) {
+              right = middle;
+            } else {
+              left = middle;
+              previousY = value;
+            }
+          }
+
+          roots.push((left + right) / 2);
+        }
+      }
+
+      previousX = x;
+      previousY = y;
+    }
+
+    return roots;
+  }
+
+  function intersection(
+    expression1,
+    expression2,
+    min = -100,
+    max = 100
+  ) {
+    const f1 = createFunction(expression1);
+    const f2 = createFunction(expression2);
+
+    const difference = x => f1(x) - f2(x);
+
+    const roots = [];
+
+    const step = 0.05;
+
+    let previousX = min;
+    let previousY = difference(previousX);
+
+    for (
+      let x = min + step;
+      x <= max;
+      x += step
+    ) {
+      const y = difference(x);
+
+      if (
+        Number.isFinite(previousY) &&
+        Number.isFinite(y) &&
+        previousY * y < 0
+      ) {
+        let left = previousX;
+        let right = x;
+
+        for (let i = 0; i < 50; i++) {
+          const middle = (left + right) / 2;
+          const value = difference(middle);
+
+          if (previousY * value <= 0) {
+            right = middle;
+          } else {
+            left = middle;
+            previousY = value;
+          }
+        }
+
+        const root = (left + right) / 2;
+
+        roots.push({
+          x: root,
+          y: f1(root)
+        });
+      }
+
+      previousX = x;
+      previousY = y;
+    }
+
+    return roots;
+  }
+
+  function range(points) {
+    if (!points.length) {
+      return null;
+    }
+
+    const ys = points.map(p => p.y);
+
+    return {
+      min: Math.min(...ys),
+      max: Math.max(...ys)
+    };
+  }
+
+  function format(value) {
+    if (!Number.isFinite(value)) {
+      return String(value);
+    }
+
+    return Number(value.toFixed(8)).toLocaleString(
+      "en-US",
+      {
+        maximumFractionDigits: 8
+      }
+    );
+  }
+
+  window.NOVERA_GRAPH = {
+    createFunction,
+    generatePoints,
+    point,
+    distance,
+    midpoint,
+    slope,
+    linear,
+    quadratic,
+    quadraticRoots,
+    intercepts,
+    intersection,
+    range,
+    format
   };
-
-
-  /* =======================================================
-     MAKE AVAILABLE TO NOVERA
-  ======================================================= */
-
-  window.NOVERA_GRAPH = NOVERA_GRAPH;
-
 })();
