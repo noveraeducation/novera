@@ -1,53 +1,68 @@
+"use strict";
+
 /* =========================================================
    NOVERA TOOLKIT CONTROLLER
-   V1.1 — STABLE CONTROLLER
+   Calculator • Algebra • Graph • Physics • Chemistry • Stats
+
+   Existing engine files are preserved.
+   This controller provides robust adapters and fallbacks.
 ========================================================= */
 
 (function () {
-  "use strict";
+
+  /* =======================================================
+     STATE
+  ======================================================= */
 
   const state = {
     activeTool: "calculator",
-    calculatorMode: "basic",
-    algebraMode: "linear",
-    graphMode: "auto",
-    physicsMode: "speed",
-    chemistryMode: "moles",
-    statisticsMode: "mean",
     history: []
   };
 
-  const TOOL_NAMES = [
-    "calculator",
-    "algebra",
-    "graph",
-    "physics",
-    "chemistry",
-    "statistics"
-  ];
+  const MAX_HISTORY = 30;
 
-  const HISTORY_KEY = "novera_toolkit_history";
-  const THEME_KEY = "novera_theme";
-
-  /* ========================================================
+  /* =======================================================
      HELPERS
-  ======================================================== */
+  ======================================================= */
 
-  function $(selector) {
-    return document.querySelector(selector);
+  function $(selector, root = document) {
+    return root.querySelector(selector);
   }
 
-  function $$(selector) {
-    return Array.from(document.querySelectorAll(selector));
+  function $$(selector, root = document) {
+    return Array.from(root.querySelectorAll(selector));
   }
 
-  function safeNumber(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
+  function escapeHTML(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
-  function formatNumber(value) {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+  function toast(message) {
+    let el = document.querySelector(".novera-tool-toast");
+
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "novera-tool-toast";
+      document.body.appendChild(el);
+    }
+
+    el.textContent = message;
+    el.classList.add("show");
+
+    clearTimeout(el._timer);
+
+    el._timer = setTimeout(() => {
+      el.classList.remove("show");
+    }, 2500);
+  }
+
+  function cleanNumber(value) {
+    if (!Number.isFinite(value)) {
       return String(value);
     }
 
@@ -55,609 +70,1038 @@
       return "0";
     }
 
-    return Number(value.toFixed(10)).toString();
+    return Number(
+      value.toPrecision(12)
+    ).toString();
   }
 
-  function formatResult(result) {
-    if (result === null || result === undefined) {
-      return "No result.";
+  function parseNumber(value) {
+    if (typeof value === "number") {
+      return value;
     }
 
-    if (typeof result === "number") {
-      return formatNumber(result);
+    const n = Number(
+      String(value)
+        .replace(/,/g, "")
+        .trim()
+    );
+
+    return Number.isFinite(n)
+      ? n
+      : NaN;
+  }
+
+  /* =======================================================
+     RESULT NORMALIZATION
+  ======================================================= */
+
+  /*
+    Your calculator engine returns objects such as:
+
+    {
+      expression: "250 ÷ 5",
+      answer: 50,
+      display: "50",
+      time: 1789379210523
     }
 
-    if (typeof result === "string") {
+    We must NOT render the internal metadata.
+  */
+
+  function extractResult(result) {
+    if (
+      result === null ||
+      result === undefined
+    ) {
+      return null;
+    }
+
+    if (
+      typeof result === "number" ||
+      typeof result === "string"
+    ) {
       return result;
     }
 
     if (typeof result === "object") {
 
-      if ("result" in result) {
-        return formatResult(result.result);
-      }
+      const preferredKeys = [
+        "display",
+        "answer",
+        "result",
+        "value",
+        "output"
+      ];
 
-      if (
-        "value" in result &&
-        typeof result.value !== "object"
-      ) {
-        return formatResult(result.value);
-      }
+      for (const key of preferredKeys) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            result,
+            key
+          )
+        ) {
+          const value = result[key];
 
-      try {
-        return Object.entries(result)
-          .map(([key, value]) => {
-            return `${key}: ${formatResult(value)}`;
-          })
-          .join("\n");
-      } catch (error) {
-        return String(result);
-      }
-    }
-
-    return String(result);
-  }
-
-  function displayAnswer(container, result) {
-    if (!container) return;
-
-    container.textContent = formatResult(result);
-
-    container.classList.remove("answer-pop");
-
-    void container.offsetWidth;
-
-    container.classList.add("answer-pop");
-  }
-
-  function getAnswerBox(panel) {
-    if (!panel) return null;
-
-    return (
-      panel.querySelector(".answer-value") ||
-      panel.querySelector(".result-value") ||
-      panel.querySelector(".tool-result") ||
-      panel.querySelector(".result") ||
-      panel.querySelector("[data-result]") ||
-      panel.querySelector(".answer")
-    );
-  }
-
-  function showError(message, input) {
-    if (!input) return;
-
-    const parent = input.parentElement;
-
-    if (!parent) return;
-
-    const old = parent.querySelector(".tool-error");
-
-    if (old) {
-      old.remove();
-    }
-
-    const error = document.createElement("div");
-
-    error.className = "tool-error";
-    error.textContent = message;
-
-    parent.appendChild(error);
-
-    setTimeout(() => {
-      if (error.parentElement) {
-        error.remove();
-      }
-    }, 3500);
-  }
-
-  /* ========================================================
-     HISTORY
-  ======================================================== */
-
-  function loadHistory() {
-    try {
-      const saved = localStorage.getItem(HISTORY_KEY);
-
-      if (saved) {
-        const parsed = JSON.parse(saved);
-
-        if (Array.isArray(parsed)) {
-          state.history = parsed.slice(0, 50);
+          if (
+            typeof value === "number" ||
+            typeof value === "string"
+          ) {
+            return value;
+          }
         }
       }
-    } catch (error) {
-      state.history = [];
+
+      /*
+        Some engines may return:
+        { result: { answer: 5 } }
+      */
+
+      for (const key of preferredKeys) {
+        if (
+          result[key] &&
+          typeof result[key] === "object"
+        ) {
+          const nested =
+            extractResult(result[key]);
+
+          if (
+            nested !== null &&
+            nested !== undefined
+          ) {
+            return nested;
+          }
+        }
+      }
     }
 
-    renderHistory();
+    return null;
   }
 
-  function saveHistory() {
-    try {
-      localStorage.setItem(
-        HISTORY_KEY,
-        JSON.stringify(state.history.slice(0, 50))
-      );
-    } catch (error) {
-      /* Storage unavailable — continue normally. */
-    }
-  }
+  /* =======================================================
+     HISTORY
+  ======================================================= */
 
   function addHistory(tool, input, result) {
-    const item = {
-      tool: tool,
-      input: String(input),
-      result: formatResult(result),
-      time: new Date().toLocaleTimeString()
-    };
+    const cleanResult =
+      extractResult(result);
 
-    state.history.unshift(item);
+    if (
+      cleanResult === null ||
+      cleanResult === undefined
+    ) {
+      return;
+    }
 
-    state.history = state.history.slice(0, 50);
+    state.history.push({
+      tool,
+      input: String(input ?? ""),
+      result: String(cleanResult),
+      time: Date.now()
+    });
 
-    saveHistory();
+    if (
+      state.history.length >
+      MAX_HISTORY
+    ) {
+      state.history.shift();
+    }
+
     renderHistory();
   }
 
   function renderHistory() {
-    const list = $("#historyList");
+    const container =
+      document.querySelector(
+        "#historyList, .history-list, [data-history]"
+      );
 
-    if (!list) return;
-
-    list.innerHTML = "";
+    if (!container) return;
 
     if (!state.history.length) {
-
-      const empty = document.createElement("div");
-
-      empty.className = "history-empty";
-
-      empty.textContent = "No calculations yet.";
-
-      list.appendChild(empty);
+      container.innerHTML = `
+        <div class="history-empty">
+          No calculations yet.
+        </div>
+      `;
 
       return;
     }
 
-    state.history.forEach((item) => {
+    container.innerHTML =
+      state.history
+        .slice()
+        .reverse()
+        .map((item) => {
+          return `
+            <button
+              class="history-item"
+              data-history-tool="${escapeHTML(
+                item.tool
+              )}"
+              data-history-input="${escapeHTML(
+                item.input
+              )}"
+              type="button"
+            >
+              <span>
+                ${escapeHTML(item.tool)}
+              </span>
 
-      const row = document.createElement("div");
+              <strong>
+                ${escapeHTML(item.input)}
+              </strong>
 
-      row.className = "history-item";
+              <em>
+                = ${escapeHTML(item.result)}
+              </em>
+            </button>
+          `;
+        })
+        .join("");
 
-      const top = document.createElement("div");
+    $$(".history-item", container)
+      .forEach((item) => {
+        item.addEventListener(
+          "click",
+          () => {
+            const tool =
+              item.dataset.historyTool;
 
-      top.className = "history-item-top";
+            const input =
+              item.dataset.historyInput;
 
-      const tool = document.createElement("strong");
+            activateTool(tool);
 
-      tool.textContent = item.tool;
-
-      const time = document.createElement("span");
-
-      time.textContent = item.time;
-
-      top.appendChild(tool);
-      top.appendChild(time);
-
-      const input = document.createElement("div");
-
-      input.className = "history-input";
-      input.textContent = item.input;
-
-      const result = document.createElement("div");
-
-      result.className = "history-result";
-      result.textContent = item.result;
-
-      row.appendChild(top);
-      row.appendChild(input);
-      row.appendChild(result);
-
-      list.appendChild(row);
-    });
+            setToolInput(
+              tool,
+              input
+            );
+          }
+        );
+      });
   }
 
   function clearHistory() {
     state.history = [];
-
-    try {
-      localStorage.removeItem(HISTORY_KEY);
-    } catch (error) {}
-
     renderHistory();
+    toast("History cleared.");
   }
 
-  function setupHistory() {
-    const button = $("#clearHistory");
+  /* =======================================================
+     CALCULATOR
+  ======================================================= */
 
-    if (button) {
-      button.addEventListener(
-        "click",
-        clearHistory
+  function normalizeExpression(expression) {
+    return String(expression || "")
+      .trim()
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
+      .replace(/−/g, "-")
+      .replace(/–/g, "-")
+      .replace(/π/g, "PI")
+      .replace(/²/g, "^2")
+      .replace(/³/g, "^3")
+      .replace(/\s+/g, "");
+  }
+
+  /*
+    Safe arithmetic fallback.
+
+    Supports:
+      +
+      -
+      *
+      /
+      ×
+      ÷
+      ^
+      %
+      π
+      parentheses
+      decimals
+      unary minus
+
+    No arbitrary JavaScript identifiers/functions.
+  */
+
+  function safeExpression(expression) {
+    let expr =
+      normalizeExpression(expression);
+
+    if (!expr) {
+      throw new Error(
+        "Enter an expression."
+      );
+    }
+
+    /*
+      Percentage:
+      50% → 0.5
+    */
+
+    expr = expr.replace(
+      /(\d+(?:\.\d+)?)%/g,
+      "($1/100)"
+    );
+
+    /*
+      Validate allowed characters.
+    */
+
+    if (
+      !/^[0-9+\-*/().^PI]+$/i.test(expr)
+    ) {
+      throw new Error(
+        "Unsupported character or symbol."
+      );
+    }
+
+    /*
+      Replace PI with numeric constant.
+    */
+
+    expr = expr.replace(
+      /\bPI\b/gi,
+      String(Math.PI)
+    );
+
+    /*
+      Convert power operator.
+
+      We implement exponentiation using a parser,
+      not Function().
+    */
+
+    const tokens = tokenize(expr);
+
+    const parser = new ExpressionParser(
+      tokens
+    );
+
+    const value =
+      parser.parse();
+
+    if (
+      !Number.isFinite(value)
+    ) {
+      throw new Error(
+        "Result is not a finite number."
+      );
+    }
+
+    return cleanNumber(value);
+  }
+
+  function tokenize(expression) {
+    const tokens = [];
+    let i = 0;
+
+    while (i < expression.length) {
+      const char =
+        expression[i];
+
+      if (
+        /[0-9.]/.test(char)
+      ) {
+        let number = "";
+
+        while (
+          i < expression.length &&
+          /[0-9.]/.test(
+            expression[i]
+          )
+        ) {
+          number +=
+            expression[i];
+          i++;
+        }
+
+        if (
+          (number.match(/\./g) || [])
+            .length > 1
+        ) {
+          throw new Error(
+            "Invalid number."
+          );
+        }
+
+        tokens.push({
+          type: "number",
+          value: Number(number)
+        });
+
+        continue;
+      }
+
+      if (
+        char === "+" ||
+        char === "-" ||
+        char === "*" ||
+        char === "/" ||
+        char === "^" ||
+        char === "(" ||
+        char === ")"
+      ) {
+        tokens.push({
+          type: "operator",
+          value: char
+        });
+
+        i++;
+        continue;
+      }
+
+      throw new Error(
+        "Invalid expression."
+      );
+    }
+
+    return tokens;
+  }
+
+  class ExpressionParser {
+
+    constructor(tokens) {
+      this.tokens = tokens;
+      this.position = 0;
+    }
+
+    current() {
+      return this.tokens[
+        this.position
+      ];
+    }
+
+    consume(value) {
+      const token =
+        this.current();
+
+      if (
+        token &&
+        token.value === value
+      ) {
+        this.position++;
+        return true;
+      }
+
+      return false;
+    }
+
+    parse() {
+      const result =
+        this.parseAddSubtract();
+
+      if (
+        this.position <
+        this.tokens.length
+      ) {
+        throw new Error(
+          "Unexpected symbol."
+        );
+      }
+
+      return result;
+    }
+
+    parseAddSubtract() {
+      let value =
+        this.parseMultiplyDivide();
+
+      while (true) {
+        if (this.consume("+")) {
+          value +=
+            this.parseMultiplyDivide();
+
+        } else if (
+          this.consume("-")
+        ) {
+          value -=
+            this.parseMultiplyDivide();
+
+        } else {
+          break;
+        }
+      }
+
+      return value;
+    }
+
+    parseMultiplyDivide() {
+      let value =
+        this.parsePower();
+
+      while (true) {
+
+        if (this.consume("*")) {
+          value *=
+            this.parsePower();
+
+        } else if (
+          this.consume("/")
+        ) {
+          const divisor =
+            this.parsePower();
+
+          if (divisor === 0) {
+            throw new Error(
+              "Cannot divide by zero."
+            );
+          }
+
+          value /= divisor;
+
+        } else {
+          break;
+        }
+      }
+
+      return value;
+    }
+
+    parsePower() {
+      let value =
+        this.parseUnary();
+
+      if (this.consume("^")) {
+        const exponent =
+          this.parsePower();
+
+        value =
+          Math.pow(
+            value,
+            exponent
+          );
+      }
+
+      return value;
+    }
+
+    parseUnary() {
+      if (this.consume("+")) {
+        return this.parseUnary();
+      }
+
+      if (this.consume("-")) {
+        return -this.parseUnary();
+      }
+
+      return this.parsePrimary();
+    }
+
+    parsePrimary() {
+      const token =
+        this.current();
+
+      if (!token) {
+        throw new Error(
+          "Incomplete expression."
+        );
+      }
+
+      if (
+        token.type === "number"
+      ) {
+        this.position++;
+        return token.value;
+      }
+
+      if (this.consume("(")) {
+        const value =
+          this.parseAddSubtract();
+
+        if (!this.consume(")")) {
+          throw new Error(
+            "Missing closing parenthesis."
+          );
+        }
+
+        return value;
+      }
+
+      throw new Error(
+        "Expected a number."
       );
     }
   }
 
-  /* ========================================================
-     TOOL ACTIVATION
-  ======================================================== */
+  function calculate(expression) {
+    const engine =
+      window.NOVERA_CALCULATOR;
 
-  function findPanel(tool) {
-    return (
-      document.querySelector(`[data-panel="${tool}"]`) ||
-      document.getElementById(`panel-${tool}`)
+    /*
+      Prefer your existing engine.
+    */
+
+    if (
+      engine &&
+      typeof engine.calculate ===
+        "function"
+    ) {
+      try {
+        const result =
+          engine.calculate(
+            expression
+          );
+
+        const extracted =
+          extractResult(result);
+
+        if (
+          extracted !== null &&
+          extracted !== undefined
+        ) {
+          return extracted;
+        }
+      } catch (error) {
+        /*
+          If engine rejects the expression,
+          fallback handles basic arithmetic.
+        */
+      }
+    }
+
+    return safeExpression(
+      expression
     );
   }
 
-  function updateWorkspaceTitle(tool) {
-    const title = $("#workspaceTitle");
+  function runCalculator() {
+    const input =
+      getToolInput("calculator");
 
-    if (!title) return;
-
-    const names = {
-      calculator: "Calculator",
-      algebra: "Algebra",
-      graph: "Graphing",
-      physics: "Physics",
-      chemistry: "Chemistry",
-      statistics: "Statistics"
-    };
-
-    title.textContent =
-      names[tool] || "Toolkit";
-  }
-
-  function activateTool(tool, shouldScroll) {
-    if (!TOOL_NAMES.includes(tool)) {
+    if (!input) {
+      toast("Enter a calculation.");
       return;
     }
 
-    state.activeTool = tool;
-
-    $$(".tool-card").forEach((card) => {
-
-      const active =
-        card.dataset.tool === tool;
-
-      card.classList.toggle(
-        "active",
-        active
-      );
-
-      card.setAttribute(
-        "aria-selected",
-        active ? "true" : "false"
-      );
-    });
-
-    TOOL_NAMES.forEach((name) => {
-
-      const panel = findPanel(name);
-
-      if (!panel) return;
-
-      const active = name === tool;
-
-      panel.classList.toggle(
-        "active-panel",
-        active
-      );
-
-      panel.classList.toggle(
-        "active",
-        active
-      );
-
-      if (active) {
-        panel.removeAttribute("hidden");
-      } else {
-        panel.setAttribute(
-          "hidden",
-          ""
-        );
-      }
-    });
-
-    updateWorkspaceTitle(tool);
-
-    if (shouldScroll) {
-
-      const workspace =
-        $("#workspace") ||
-        $(".workspace-section");
-
-      if (workspace) {
-
-        workspace.scrollIntoView({
-          behavior: "smooth",
-          block: "start"
-        });
-
-      }
-    }
-  }
-
-  function setupToolCards() {
-    $$(".tool-card").forEach((card) => {
-
-      card.addEventListener(
-        "click",
-        () => {
-
-          activateTool(
-            card.dataset.tool,
-            true
-          );
-
-        }
-      );
-    });
-  }
-
-  /* ========================================================
-     CALCULATOR
-  ======================================================== */
-
-  function safeExpression(expression) {
-
-    let value =
-      String(expression || "")
-        .trim();
-
-    if (!value) {
-      throw new Error(
-        "Enter a calculation."
-      );
-    }
-
-    value = value
-      .replace(/×/g, "*")
-      .replace(/÷/g, "/")
-      .replace(/π/g, "Math.PI")
-      .replace(/\^/g, "**")
-      .replace(/²/g, "**2")
-      .replace(/³/g, "**3")
-      .replace(
-        /(\d+(?:\.\d+)?)%/g,
-        "($1/100)"
-      );
-
-    if (
-      !/^[0-9+\-*/().%\sA-Za-z_*]+$/.test(
-        value
-      )
-    ) {
-      throw new Error(
-        "Invalid expression."
-      );
-    }
-
-    const allowed =
-      value.replace(
-        /Math\.(PI|E)/g,
-        ""
-      );
-
-    if (/[A-Za-z]/.test(allowed)) {
-      throw new Error(
-        "Invalid expression."
-      );
-    }
-
-    const result =
-      Function(
-        `"use strict"; return (${value});`
-      )();
-
-    if (
-      typeof result !== "number" ||
-      !Number.isFinite(result)
-    ) {
-      throw new Error(
-        "Result is not finite."
-      );
-    }
-
-    return result;
-  }
-
-  function calculateCalculator() {
-
-    const input =
-      $("#calculatorInput");
-
-    if (!input) return;
-
     try {
+      const answer =
+        calculate(input);
 
-      const expression =
-        input.value.trim();
+      showResult(
+        answer,
+        "calculator"
+      );
 
-      if (!expression) {
+      addHistory(
+        "Calculator",
+        input,
+        answer
+      );
 
-        showError(
-          "Enter something to calculate.",
-          input
+    } catch (error) {
+      showError(
+        error.message ||
+          "Invalid calculation."
+      );
+    }
+  }
+
+  /* =======================================================
+     ALGEBRA
+  ======================================================= */
+
+  function parseLinearEquation(
+    equation
+  ) {
+    const cleaned =
+      equation
+        .replace(/\s+/g, "")
+        .replace(/−/g, "-");
+
+    const parts =
+      cleaned.split("=");
+
+    if (parts.length !== 2) {
+      throw new Error(
+        "Use an equation such as 2x + 5 = 15."
+      );
+    }
+
+    const left =
+      linearCoefficients(parts[0]);
+
+    const right =
+      linearCoefficients(parts[1]);
+
+    const a =
+      left.a - right.a;
+
+    const b =
+      right.b - left.b;
+
+    if (Math.abs(a) < 1e-12) {
+      if (Math.abs(b) < 1e-12) {
+        return "Every value of x satisfies the equation.";
+      }
+
+      return "No solution.";
+    }
+
+    return `x = ${cleanNumber(
+      b / a
+    )}`;
+  }
+
+  function linearCoefficients(side) {
+    let expression =
+      side
+        .replace(/\*/g, "")
+        .replace(/([0-9])x/gi, "$1*x");
+
+    /*
+      Convert subtraction to + negative.
+    */
+
+    expression =
+      expression.replace(
+        /-/g,
+        "+-"
+      );
+
+    if (
+      expression.startsWith("+")
+    ) {
+      expression =
+        expression.slice(1);
+    }
+
+    const terms =
+      expression.split("+");
+
+    let a = 0;
+    let b = 0;
+
+    terms.forEach((term) => {
+      if (!term) return;
+
+      if (/x$/i.test(term)) {
+        const coefficient =
+          term
+            .replace(/x$/i, "");
+
+        if (
+          coefficient === "" ||
+          coefficient === "+"
+        ) {
+          a += 1;
+        } else if (
+          coefficient === "-"
+        ) {
+          a -= 1;
+        } else {
+          a += Number(
+            coefficient
+          );
+        }
+
+        return;
+      }
+
+      const xMatch =
+        term.match(
+          /^([+-]?\d*\.?\d*)\*x$/i
+        );
+
+      if (xMatch) {
+        let coefficient =
+          xMatch[1];
+
+        if (
+          coefficient === "" ||
+          coefficient === "+"
+        ) {
+          coefficient = 1;
+        }
+
+        if (
+          coefficient === "-"
+        ) {
+          coefficient = -1;
+        }
+
+        a += Number(
+          coefficient
         );
 
         return;
       }
 
-      let result;
+      const number =
+        Number(term);
 
-      if (
-        window.NOVERA_CALCULATOR &&
-        typeof
-          window.NOVERA_CALCULATOR.calculate ===
-            "function"
-      ) {
-
-        result =
-          window.NOVERA_CALCULATOR.calculate(
-            expression
-          );
-
-      } else {
-
-        result =
-          safeExpression(
-            expression
-          );
-
+      if (!Number.isFinite(number)) {
+        throw new Error(
+          "Could not understand the equation."
+        );
       }
 
-      displayAnswer(
-        getAnswerBox(
-          $("#panel-calculator")
-        ),
-        result
-      );
+      b += number;
+    });
 
-      addHistory(
-        "Calculator",
-        expression,
-        result
-      );
-
-    } catch (error) {
-
-      showError(
-        error.message ||
-          "Could not calculate.",
-        input
-      );
-    }
+    return { a, b };
   }
 
-  function setupCalculator() {
+  function quadraticCoefficients(
+    equation
+  ) {
+    const cleaned =
+      equation
+        .replace(/\s+/g, "")
+        .replace(/−/g, "-")
+        .replace(/\^2/g, "²");
 
-    const button =
-      $("#calculateBasic") ||
-      $("#calculateCalculator") ||
-      $("#calculatorCalculate") ||
-      $('[data-action="calculate-calculator"]');
+    const parts =
+      cleaned.split("=");
 
-    if (button) {
-
-      button.addEventListener(
-        "click",
-        calculateCalculator
+    if (parts.length !== 2) {
+      throw new Error(
+        "Use an equation such as x² + 5x + 6 = 0."
       );
     }
-
-    const input =
-      $("#calculatorInput");
-
-    if (input) {
-
-      input.addEventListener(
-        "keydown",
-        (event) => {
-
-          if (
-            event.key === "Enter"
-          ) {
-
-            event.preventDefault();
-
-            calculateCalculator();
-          }
-        }
-      );
-    }
-
-    $$(".calculator-modes [data-calculator-mode], .calculator-modes [data-mode], .calculator-mode-selector [data-calculator-mode], .calculator-mode-selector [data-mode]")
-      .forEach((button) => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            state.calculatorMode =
-              button.dataset.calculatorMode ||
-              button.dataset.mode ||
-              state.calculatorMode;
-
-            const parent =
-              button.parentElement;
-
-            if (parent) {
-
-              parent
-                .querySelectorAll(
-                  "button"
-                )
-                .forEach((item) => {
-
-                  item.classList.toggle(
-                    "active",
-                    item === button
-                  );
-
-                });
-
-            }
-
-          }
-        );
-
-      });
-
-    $$("[data-expression]").forEach(
-      (chip) => {
-
-        chip.addEventListener(
-          "click",
-          () => {
-
-            const expression =
-              chip.dataset.expression ||
-              chip.dataset.value ||
-              chip.textContent.trim();
-
-            if (input) {
-
-              input.value =
-                expression;
-
-              input.focus();
-
-            }
-
-          }
-        );
-
-      }
-    );
-  }
-
-  /* ========================================================
-     ALGEBRA
-  ======================================================== */
-
-  function solveAlgebra() {
-
-    const input =
-      $("#algebraInput");
-
-    if (!input) return;
 
     const expression =
-      input.value.trim();
+      `${parts[0]}-(${parts[1]})`
+        .replace(/²/g, "^2");
 
-    if (!expression) {
+    const normalized =
+      expression
+        .replace(/-/g, "+-");
 
-      showError(
-        "Enter an equation or expression.",
-        input
+    const terms =
+      normalized.split("+");
+
+    let a = 0;
+    let b = 0;
+    let c = 0;
+
+    terms.forEach((raw) => {
+      const term =
+        raw.replace(
+          /^\+/,
+          ""
+        );
+
+      if (!term) return;
+
+      const squared =
+        term.match(
+          /^([+-]?\d*\.?\d*)x\^2$/i
+        );
+
+      if (squared) {
+        let coefficient =
+          squared[1];
+
+        if (
+          coefficient === "" ||
+          coefficient === "+"
+        ) {
+          coefficient = 1;
+        }
+
+        if (
+          coefficient === "-"
+        ) {
+          coefficient = -1;
+        }
+
+        a += Number(
+          coefficient
+        );
+
+        return;
+      }
+
+      const linear =
+        term.match(
+          /^([+-]?\d*\.?\d*)x$/i
+        );
+
+      if (linear) {
+        let coefficient =
+          linear[1];
+
+        if (
+          coefficient === "" ||
+          coefficient === "+"
+        ) {
+          coefficient = 1;
+        }
+
+        if (
+          coefficient === "-"
+        ) {
+          coefficient = -1;
+        }
+
+        b += Number(
+          coefficient
+        );
+
+        return;
+      }
+
+      const constant =
+        Number(term);
+
+      if (
+        !Number.isFinite(
+          constant
+        )
+      ) {
+        throw new Error(
+          "Could not understand the quadratic equation."
+        );
+      }
+
+      c += constant;
+    });
+
+    return { a, b, c };
+  }
+
+  function solveQuadraticFallback(
+    equation
+  ) {
+    const {
+      a,
+      b,
+      c
+    } =
+      quadraticCoefficients(
+        equation
       );
 
+    if (
+      Math.abs(a) < 1e-12
+    ) {
+      return parseLinearEquation(
+        equation
+      );
+    }
+
+    const discriminant =
+      b * b - 4 * a * c;
+
+    if (discriminant < 0) {
+      const real =
+        -b / (2 * a);
+
+      const imaginary =
+        Math.sqrt(
+          -discriminant
+        ) /
+        Math.abs(2 * a);
+
+      return `
+        No real roots.<br>
+        Complex roots:
+        ${cleanNumber(real)}
+        ± ${cleanNumber(imaginary)}i
+      `;
+    }
+
+    if (
+      Math.abs(discriminant) <
+      1e-12
+    ) {
+      const root =
+        -b / (2 * a);
+
+      return `
+        One repeated root:<br>
+        x = ${cleanNumber(root)}
+      `;
+    }
+
+    const root1 =
+      (-b + Math.sqrt(discriminant)) /
+      (2 * a);
+
+    const root2 =
+      (-b - Math.sqrt(discriminant)) /
+      (2 * a);
+
+    return `
+      x₁ = ${cleanNumber(root1)}<br>
+      x₂ = ${cleanNumber(root2)}
+    `;
+  }
+
+  function solveSimultaneousFallback(
+    eq1,
+    eq2
+  ) {
+    const first =
+      linearCoefficients(
+        eq1.split("=")[0]
+      );
+
+    const firstRight =
+      linearCoefficients(
+        eq1.split("=")[1]
+      );
+
+    const second =
+      linearCoefficients(
+        eq2.split("=")[0]
+      );
+
+    const secondRight =
+      linearCoefficients(
+        eq2.split("=")[1]
+      );
+
+    const a1 =
+      first.a - firstRight.a;
+
+    const b1 =
+      first.b - firstRight.b;
+
+    const c1 =
+      second.a - secondRight.a;
+
+    const d1 =
+      second.b - secondRight.b;
+
+    /*
+      a1*x + b1 = 0
+      c1*x + d1 = 0
+
+      This fallback handles one-variable
+      simultaneous equations. For true
+      x/y systems use the engine below.
+    */
+
+    const denominator =
+      a1 * d1 -
+      c1 * b1;
+
+    if (
+      Math.abs(denominator) <
+      1e-12
+    ) {
+      return "No unique solution.";
+    }
+
+    return `
+      x = ${cleanNumber(
+        -b1 / a1
+      )}
+    `;
+  }
+
+  function runAlgebra() {
+    const input =
+      getToolInput("algebra");
+
+    if (!input) {
+      toast("Enter an equation.");
       return;
     }
 
     try {
-
       let result = null;
 
       const engine =
@@ -665,1408 +1109,1850 @@
 
       if (engine) {
 
-        const mode =
-          state.algebraMode;
+        /*
+          Try common engine APIs.
+        */
 
         if (
-          mode === "linear" &&
-          typeof engine.solveLinear ===
-            "function"
-        ) {
-
-          result =
-            engine.solveLinear(
-              expression
-            );
-
-        } else if (
-          mode === "quadratic" &&
-          typeof engine.solveQuadratic ===
-            "function"
-        ) {
-
-          result =
-            engine.solveQuadratic(
-              expression
-            );
-
-        } else if (
-          mode === "simultaneous" &&
-          typeof engine.solveSimultaneous ===
-            "function"
-        ) {
-
-          result =
-            engine.solveSimultaneous(
-              expression
-            );
-
-        } else if (
-          mode === "ratio" &&
-          typeof engine.solveRatio ===
-            "function"
-        ) {
-
-          result =
-            engine.solveRatio(
-              expression
-            );
-
-        } else if (
           typeof engine.solve ===
-            "function"
+          "function"
         ) {
+          try {
+            result =
+              engine.solve(input);
+          } catch (_) {}
+        }
 
-          result =
-            engine.solve(
-              expression,
-              mode
-            );
+        if (
+          result == null &&
+          typeof engine.solveLinear ===
+          "function"
+        ) {
+          try {
+            result =
+              engine.solveLinear(
+                input
+              );
+          } catch (_) {}
+        }
+
+        if (
+          result == null &&
+          typeof engine.solveQuadratic ===
+          "function"
+        ) {
+          try {
+            result =
+              engine.solveQuadratic(
+                input
+              );
+          } catch (_) {}
         }
       }
 
-      if (result === null) {
+      const extracted =
+        extractResult(result);
 
-        result =
-          "Enter a valid algebra problem.";
+      if (
+        extracted !== null &&
+        extracted !== undefined
+      ) {
+        showResult(
+          extracted,
+          "algebra"
+        );
+
+        addHistory(
+          "Algebra",
+          input,
+          extracted
+        );
+
+        return;
       }
 
-      displayAnswer(
-        getAnswerBox(
-          $("#panel-algebra")
-        ),
-        result
+      /*
+        Fallback selection.
+      */
+
+      if (
+        /x\^2|x²/i.test(input)
+      ) {
+        result =
+          solveQuadraticFallback(
+            input
+          );
+      } else {
+        result =
+          parseLinearEquation(
+            input
+          );
+      }
+
+      showResult(
+        result,
+        "algebra"
       );
 
       addHistory(
         "Algebra",
-        expression,
+        input,
         result
       );
 
     } catch (error) {
-
       showError(
         error.message ||
-          "Could not solve.",
-        input
+          "Could not solve the equation."
       );
     }
   }
 
-  function setupAlgebra() {
+  /* =======================================================
+     GRAPHING
+  ======================================================= */
 
-    $$(".algebra-mode-selector [data-algebra-mode], .algebra-mode-selector [data-mode]")
-      .forEach((button) => {
+  function findGraphCanvas() {
+    return (
+      document.querySelector(
+        "#graphCanvas"
+      ) ||
+      document.querySelector(
+        "canvas[data-graph]"
+      ) ||
+      document.querySelector(
+        ".graph-canvas"
+      )
+    );
+  }
 
-        button.addEventListener(
-          "click",
-          () => {
+  function getGraphExpression() {
+    return getToolInput(
+      "graph"
+    );
+  }
 
-            state.algebraMode =
-              button.dataset.algebraMode ||
-              button.dataset.mode ||
-              state.algebraMode;
+  function evaluateGraphFunction(
+    expression,
+    x
+  ) {
+    let expr =
+      String(expression || "")
+        .trim();
 
-            button.parentElement
-              ?.querySelectorAll("button")
-              .forEach((item) => {
-
-                item.classList.toggle(
-                  "active",
-                  item === button
-                );
-
-              });
-
-          }
+    expr =
+      expr
+        .replace(/^y\s*=\s*/i, "")
+        .replace(/^f\(x\)\s*=\s*/i, "")
+        .replace(/×/g, "*")
+        .replace(/÷/g, "/")
+        .replace(/−/g, "-")
+        .replace(/π/g, "Math.PI")
+        .replace(/\^/g, "**")
+        .replace(
+          /\bsin\b/gi,
+          "Math.sin"
+        )
+        .replace(
+          /\bcos\b/gi,
+          "Math.cos"
+        )
+        .replace(
+          /\btan\b/gi,
+          "Math.tan"
+        )
+        .replace(
+          /\bsqrt\b/gi,
+          "Math.sqrt"
+        )
+        .replace(
+          /\blog\b/gi,
+          "Math.log10"
+        )
+        .replace(
+          /\bln\b/gi,
+          "Math.log"
+        )
+        .replace(
+          /\bexp\b/gi,
+          "Math.exp"
+        )
+        .replace(
+          /\be\b/g,
+          "Math.E"
         );
 
-      });
+    /*
+      Degree-friendly trig.
+      Users normally expect school graphing
+      such as sin(x), so x is interpreted
+      in radians unless degree notation is used.
+    */
 
-    const button =
-      $("#solveAlgebra") ||
-      $('[data-action="solve-algebra"]');
+    if (
+      /\bsin|cos|tan/i.test(
+        expression
+      )
+    ) {
+      /*
+        Keep standard mathematical radians.
+      */
+    }
 
-    if (button) {
+    /*
+      Only permit safe mathematical characters.
+    */
 
-      button.addEventListener(
-        "click",
-        solveAlgebra
+    if (
+      !/^[0-9xX+\-*/().,%_*a-zA-Z]+$/.test(
+        expr
+      )
+    ) {
+      throw new Error(
+        "Unsupported graph expression."
       );
     }
 
-    const input =
-      $("#algebraInput");
+    /*
+      Restrict identifiers to Math.* functions
+      and x.
+    */
 
-    if (input) {
+    const allowed =
+      expr.replace(
+        /Math\.(sin|cos|tan|sqrt|log10|log|exp|PI|E)/g,
+        ""
+      );
 
-      input.addEventListener(
-        "keydown",
-        (event) => {
-
-          if (
-            event.key === "Enter"
-          ) {
-
-            event.preventDefault();
-
-            solveAlgebra();
-          }
-        }
+    if (
+      /[a-wyzA-WYZ_]/.test(
+        allowed
+      )
+    ) {
+      throw new Error(
+        "Unknown graph function."
       );
     }
-  }
 
-  /* ========================================================
-     GRAPH
-  ======================================================== */
-
-  function setupGraph() {
-
-    $$(".graph-options [data-graph-type], .graph-options [data-mode]")
-      .forEach((button) => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            state.graphMode =
-              button.dataset.graphType ||
-              button.dataset.mode ||
-              state.graphMode;
-
-            button.parentElement
-              ?.querySelectorAll("button")
-              .forEach((item) => {
-
-                item.classList.toggle(
-                  "active",
-                  item === button
-                );
-
-              });
-
-          }
+    try {
+      const fn =
+        new Function(
+          "x",
+          `"use strict"; return (${expr});`
         );
 
-      });
+      const y =
+        fn(x);
 
-    const button =
-      $("#plotGraph") ||
-      $('[data-action="plot-graph"]');
+      if (
+        typeof y !== "number" ||
+        !Number.isFinite(y)
+      ) {
+        return null;
+      }
 
-    if (button) {
+      return y;
 
-      button.addEventListener(
-        "click",
-        plotGraph
+    } catch (error) {
+      throw new Error(
+        "Could not understand the graph expression."
       );
     }
   }
 
-  function plotGraph() {
+  function drawGraph(
+    expression
+  ) {
+    const canvas =
+      findGraphCanvas();
 
-    const input =
-      $("#graphInput");
+    if (!canvas) {
+      /*
+        If the current HTML has no canvas,
+        create one inside the graph workspace.
+      */
 
-    if (!input) return;
+      const workspace =
+        document.querySelector(
+          "#graphWorkspace, .graph-workspace, [data-graph-workspace]"
+        );
 
+      if (!workspace) {
+        throw new Error(
+          "Graph workspace not found."
+        );
+      }
+
+      canvas =
+        document.createElement(
+          "canvas"
+        );
+
+      canvas.id =
+        "graphCanvas";
+
+      canvas.className =
+        "graph-canvas";
+
+      workspace.appendChild(
+        canvas
+      );
+    }
+
+    const rect =
+      canvas.getBoundingClientRect();
+
+    const width =
+      Math.max(
+        320,
+        Math.floor(
+          rect.width ||
+            canvas.clientWidth ||
+            640
+        )
+      );
+
+    const height =
+      Math.max(
+        320,
+        Math.floor(
+          rect.height ||
+            canvas.clientHeight ||
+            420
+        )
+      );
+
+    const dpr =
+      window.devicePixelRatio ||
+      1;
+
+    canvas.width =
+      width * dpr;
+
+    canvas.height =
+      height * dpr;
+
+    canvas.style.width =
+      `${width}px`;
+
+    canvas.style.height =
+      `${height}px`;
+
+    const ctx =
+      canvas.getContext(
+        "2d"
+      );
+
+    ctx.setTransform(
+      dpr,
+      0,
+      0,
+      dpr,
+      0,
+      0
+    );
+
+    ctx.clearRect(
+      0,
+      0,
+      width,
+      height
+    );
+
+    /*
+      Coordinate system.
+    */
+
+    const xmin = -10;
+    const xmax = 10;
+    const ymin = -10;
+    const ymax = 10;
+
+    function px(x) {
+      return (
+        (x - xmin) /
+          (xmax - xmin)
+      ) * width;
+    }
+
+    function py(y) {
+      return (
+        1 -
+          (y - ymin) /
+            (ymax - ymin)
+      ) * height;
+    }
+
+    /*
+      Grid.
+    */
+
+    ctx.lineWidth = 1;
+
+    for (
+      let x = xmin;
+      x <= xmax;
+      x++
+    ) {
+      const screenX =
+        px(x);
+
+      ctx.beginPath();
+      ctx.moveTo(
+        screenX,
+        0
+      );
+      ctx.lineTo(
+        screenX,
+        height
+      );
+      ctx.stroke();
+    }
+
+    for (
+      let y = ymin;
+      y <= ymax;
+      y++
+    ) {
+      const screenY =
+        py(y);
+
+      ctx.beginPath();
+      ctx.moveTo(
+        0,
+        screenY
+      );
+      ctx.lineTo(
+        width,
+        screenY
+      );
+      ctx.stroke();
+    }
+
+    /*
+      Axes.
+    */
+
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      px(0),
+      0
+    );
+
+    ctx.lineTo(
+      px(0),
+      height
+    );
+
+    ctx.moveTo(
+      0,
+      py(0)
+    );
+
+    ctx.lineTo(
+      width,
+      py(0)
+    );
+
+    ctx.stroke();
+
+    /*
+      Axis labels.
+    */
+
+    ctx.font =
+      "12px sans-serif";
+
+    for (
+      let x = xmin;
+      x <= xmax;
+      x++
+    ) {
+      if (x === 0) continue;
+
+      ctx.fillText(
+        String(x),
+        px(x) + 3,
+        py(0) - 5
+      );
+    }
+
+    for (
+      let y = ymin;
+      y <= ymax;
+      y++
+    ) {
+      if (y === 0) continue;
+
+      ctx.fillText(
+        String(y),
+        px(0) + 5,
+        py(y) - 3
+      );
+    }
+
+    /*
+      Function.
+    */
+
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+
+    let started =
+      false;
+
+    const steps =
+      Math.max(
+        600,
+        width * 2
+      );
+
+    for (
+      let i = 0;
+      i <= steps;
+      i++
+    ) {
+      const x =
+        xmin +
+        (xmax - xmin) *
+          (i / steps);
+
+      let y;
+
+      try {
+        y =
+          evaluateGraphFunction(
+            expression,
+            x
+          );
+      } catch (error) {
+        throw error;
+      }
+
+      if (
+        y === null ||
+        !Number.isFinite(y) ||
+        Math.abs(y) > 100000
+      ) {
+        started = false;
+        continue;
+      }
+
+      const screenX =
+        px(x);
+
+      const screenY =
+        py(
+          Math.max(
+            ymin - 100,
+            Math.min(
+              ymax + 100,
+              y
+            )
+          )
+        );
+
+      if (!started) {
+        ctx.moveTo(
+          screenX,
+          screenY
+        );
+
+        started = true;
+      } else {
+        ctx.lineTo(
+          screenX,
+          screenY
+        );
+      }
+    }
+
+    ctx.stroke();
+
+    return canvas;
+  }
+
+  function runGraph() {
     const expression =
-      input.value.trim();
+      getGraphExpression();
 
     if (!expression) {
-
-      showError(
-        "Enter a function or equation.",
-        input
+      toast(
+        "Enter a function such as y = x²."
       );
-
       return;
     }
 
     try {
-
-      let result = null;
-
-      const engine =
-        window.NOVERA_GRAPH;
-
-      if (engine) {
-
-        if (
-          typeof engine.plot ===
-            "function"
-        ) {
-
-          result =
-            engine.plot(
-              expression,
-              state.graphMode
-            );
-
-        } else if (
-          typeof engine.generate ===
-            "function"
-        ) {
-
-          result =
-            engine.generate(
-              expression,
-              state.graphMode
-            );
-
-        } else if (
-          typeof engine.solve ===
-            "function"
-        ) {
-
-          result =
-            engine.solve(
-              expression,
-              state.graphMode
-            );
-        }
-      }
-
-      const answer =
-        getAnswerBox(
-          $("#panel-graph")
+      const canvas =
+        drawGraph(
+          expression
         );
 
-      if (answer) {
-
-        displayAnswer(
-          answer,
-          result ||
-            "Graph generated."
-        );
-      }
+      showResult(
+        `Graph plotted for ${escapeHTML(
+          expression
+        )}`,
+        "graph"
+      );
 
       addHistory(
         "Graph",
         expression,
-        result ||
-          "Graph generated."
+        `Graph plotted`
       );
 
-    } catch (error) {
+      canvas.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
 
+    } catch (error) {
       showError(
         error.message ||
-          "Could not generate graph.",
-        input
+          "Could not plot the graph."
       );
     }
   }
 
-  /* ========================================================
+  /* =======================================================
      PHYSICS
-  ======================================================== */
+  ======================================================= */
 
-  const physicsFields = {
+  function runPhysics() {
+    const input =
+      getToolInput(
+        "physics"
+      );
 
-    speed: [
-      ["distance", "Distance"],
-      ["time", "Time"]
-    ],
+    if (!input) {
+      toast(
+        "Enter the required values."
+      );
+      return;
+    }
 
-    force: [
-      ["mass", "Mass"],
-      ["acceleration", "Acceleration"]
-    ],
-
-    energy: [
-      ["mass", "Mass"],
-      ["velocity", "Velocity"]
-    ],
-
-    power: [
-      ["energy", "Energy"],
-      ["time", "Time"]
-    ],
-
-    electricity: [
-      ["voltage", "Voltage"],
-      ["resistance", "Resistance"]
-    ]
-
-  };
-
-  function renderPhysicsFields() {
-
-    const container =
-      $("#physicsFields");
-
-    if (!container) return;
-
-    const fields =
-      physicsFields[
-        state.physicsMode
-      ] ||
-      physicsFields.speed;
-
-    container.innerHTML = "";
-
-    fields.forEach(
-      ([name, label]) => {
-
-        const wrapper =
-          document.createElement(
-            "div"
-          );
-
-        wrapper.className =
-          "input-group";
-
-        const title =
-          document.createElement(
-            "label"
-          );
-
-        title.textContent =
-          label;
-
-        const input =
-          document.createElement(
-            "input"
-          );
-
-        input.type =
-          "number";
-
-        input.step =
-          "any";
-
-        input.inputMode =
-          "decimal";
-
-        input.dataset.field =
-          name;
-
-        input.className =
-          "main-input";
-
-        input.placeholder =
-          label;
-
-        wrapper.appendChild(
-          title
-        );
-
-        wrapper.appendChild(
-          input
-        );
-
-        container.appendChild(
-          wrapper
-        );
-      }
-    );
-  }
-
-  function calculatePhysics() {
-
-    const container =
-      $("#physicsFields");
-
-    if (!container) return;
-
-    const values = {};
-
-    container
-      .querySelectorAll(
-        "[data-field]"
-      )
-      .forEach((input) => {
-
-        values[
-          input.dataset.field
-        ] =
-          safeNumber(
-            input.value
-          );
-
-      });
+    const engine =
+      window.NOVERA_PHYSICS;
 
     try {
-
       let result = null;
 
-      const engine =
-        window.NOVERA_PHYSICS;
+      /*
+        Try JSON-style command input first.
+      */
 
-      const mode =
-        state.physicsMode;
+      if (
+        engine &&
+        typeof engine.calculate ===
+          "function"
+      ) {
+        try {
+          result =
+            engine.calculate(
+              input
+            );
+        } catch (_) {}
+      }
 
-      if (engine) {
+      /*
+        Common simple format:
+        speed: distance/time
+      */
+
+      if (
+        result == null
+      ) {
+        const lower =
+          input.toLowerCase();
 
         if (
-          mode === "speed" &&
-          typeof engine.speed ===
-            "function"
+          lower.includes("force")
         ) {
-
-          result =
-            engine.speed(
-              values.distance,
-              values.time
+          const m =
+            extractNamedNumber(
+              input,
+              "mass"
             );
 
-        } else if (
-          mode === "force" &&
-          typeof engine.force ===
-            "function"
-        ) {
-
-          result =
-            engine.force(
-              values.mass,
-              values.acceleration
+          const a =
+            extractNamedNumber(
+              input,
+              "acceleration"
             );
 
-        } else if (
-          mode === "energy" &&
-          typeof engine.kineticEnergy ===
-            "function"
-        ) {
+          if (
+            Number.isFinite(m) &&
+            Number.isFinite(a)
+          ) {
+            result =
+              m * a;
+          }
+        }
 
-          result =
-            engine.kineticEnergy(
-              values.mass,
-              values.velocity
+        if (
+          result == null &&
+          lower.includes("speed")
+        ) {
+          const d =
+            extractNamedNumber(
+              input,
+              "distance"
             );
 
-        } else if (
-          mode === "power" &&
-          typeof engine.power ===
-            "function"
-        ) {
-
-          result =
-            engine.power(
-              values.energy,
-              values.time
+          const t =
+            extractNamedNumber(
+              input,
+              "time"
             );
 
-        } else if (
-          mode === "electricity" &&
-          typeof engine.electricalPower ===
-            "function"
-        ) {
-
-          result =
-            engine.electricalPower(
-              values.voltage,
-              values.resistance
-            );
+          if (
+            Number.isFinite(d) &&
+            Number.isFinite(t) &&
+            t !== 0
+          ) {
+            result =
+              d / t;
+          }
         }
       }
 
-      if (result === null) {
-
+      if (
+        result == null
+      ) {
         result =
-          "Enter valid values.";
+          tryPhysicsEngine(
+            engine,
+            input
+          );
       }
 
-      displayAnswer(
-        getAnswerBox(
-          $("#panel-physics")
-        ),
-        result
+      if (
+        result == null
+      ) {
+        throw new Error(
+          "Enter a supported physics calculation."
+        );
+      }
+
+      const output =
+        extractResult(
+          result
+        ) ??
+        result;
+
+      showResult(
+        output,
+        "physics"
       );
 
       addHistory(
         "Physics",
-        mode,
-        result
+        input,
+        output
       );
 
     } catch (error) {
-
       showError(
         error.message ||
-          "Could not calculate.",
-        container
+          "Physics calculation failed."
       );
     }
   }
 
-  function setupPhysics() {
-
-    $$(".physics-selector [data-physics-mode], .physics-selector [data-mode]")
-      .forEach((button) => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            state.physicsMode =
-              button.dataset.physicsMode ||
-              button.dataset.mode ||
-              state.physicsMode;
-
-            button.parentElement
-              ?.querySelectorAll("button")
-              .forEach((item) => {
-
-                item.classList.toggle(
-                  "active",
-                  item === button
-                );
-
-              });
-
-            renderPhysicsFields();
-          }
-        );
-
-      });
-
-    const button =
-      $("#calculatePhysics") ||
-      $('[data-action="calculate-physics"]');
-
-    if (button) {
-
-      button.addEventListener(
-        "click",
-        calculatePhysics
-      );
+  function tryPhysicsEngine(
+    engine,
+    input
+  ) {
+    if (!engine) {
+      return null;
     }
 
-    renderPhysicsFields();
-  }
+    const numberPattern =
+      /-?\d+(?:\.\d+)?/g;
 
-  /* ========================================================
-     CHEMISTRY
-  ======================================================== */
+    const numbers =
+      String(input).match(
+        numberPattern
+      ) || [];
 
-  const chemistryFields = {
+    const values =
+      numbers.map(Number);
 
-    moles: [
-      ["mass", "Mass"],
-      ["molarMass", "Molar mass"]
-    ],
-
-    molarity: [
-      ["moles", "Moles"],
-      ["volume", "Volume"]
-    ],
-
-    gas: [
-      ["pressure", "Pressure"],
-      ["volume", "Volume"],
-      ["temperature", "Temperature"]
-    ],
-
-    ph: [
-      ["concentration", "Concentration"]
-    ],
-
-    heat: [
-      ["mass", "Mass"],
-      ["specificHeat", "Specific heat"],
-      ["deltaTemperature", "Temperature change"]
-    ]
-
-  };
-
-  function renderChemistryFields() {
-
-    const container =
-      $("#chemistryFields");
-
-    if (!container) return;
-
-    const fields =
-      chemistryFields[
-        state.chemistryMode
-      ] ||
-      chemistryFields.moles;
-
-    container.innerHTML = "";
-
-    fields.forEach(
-      ([name, label]) => {
-
-        const wrapper =
-          document.createElement(
-            "div"
-          );
-
-        wrapper.className =
-          "input-group";
-
-        const title =
-          document.createElement(
-            "label"
-          );
-
-        title.textContent =
-          label;
-
-        const input =
-          document.createElement(
-            "input"
-          );
-
-        input.type =
-          "number";
-
-        input.step =
-          "any";
-
-        input.inputMode =
-          "decimal";
-
-        input.dataset.field =
-          name;
-
-        input.className =
-          "main-input";
-
-        input.placeholder =
-          label;
-
-        wrapper.appendChild(
-          title
-        );
-
-        wrapper.appendChild(
-          input
-        );
-
-        container.appendChild(
-          wrapper
-        );
-      }
-    );
-  }
-
-  function calculateChemistry() {
-
-    const container =
-      $("#chemistryFields");
-
-    if (!container) return;
-
-    const values = {};
-
-    container
-      .querySelectorAll(
-        "[data-field]"
-      )
-      .forEach((input) => {
-
-        values[
-          input.dataset.field
-        ] =
-          safeNumber(
-            input.value
-          );
-
-      });
+    const lower =
+      input.toLowerCase();
 
     try {
+      if (
+        lower.includes("speed") &&
+        typeof engine.speed ===
+          "function"
+      ) {
+        return engine.speed(
+          values[0],
+          values[1]
+        );
+      }
 
+      if (
+        lower.includes("force") &&
+        typeof engine.force ===
+          "function"
+      ) {
+        return engine.force(
+          values[0],
+          values[1]
+        );
+      }
+
+      if (
+        lower.includes("kinetic") &&
+        typeof engine.kineticEnergy ===
+          "function"
+      ) {
+        return engine.kineticEnergy(
+          values[0],
+          values[1]
+        );
+      }
+
+      if (
+        lower.includes("power") &&
+        typeof engine.power ===
+          "function"
+      ) {
+        return engine.power(
+          values[0],
+          values[1]
+        );
+      }
+
+      if (
+        lower.includes("electrical") &&
+        typeof engine.electricalPower ===
+          "function"
+      ) {
+        return engine.electricalPower(
+          values[0],
+          values[1]
+        );
+      }
+
+    } catch (_) {}
+
+    return null;
+  }
+
+  /* =======================================================
+     CHEMISTRY
+  ======================================================= */
+
+  function runChemistry() {
+    const input =
+      getToolInput(
+        "chemistry"
+      );
+
+    if (!input) {
+      toast(
+        "Enter the required values."
+      );
+      return;
+    }
+
+    const engine =
+      window.NOVERA_CHEMISTRY;
+
+    try {
       let result = null;
 
-      const engine =
-        window.NOVERA_CHEMISTRY;
-
-      const mode =
-        state.chemistryMode;
-
-      if (engine) {
-
-        if (
-          mode === "moles" &&
-          typeof engine.molesFromMass ===
-            "function"
-        ) {
-
+      if (
+        engine &&
+        typeof engine.calculate ===
+          "function"
+      ) {
+        try {
           result =
-            engine.molesFromMass(
-              values.mass,
-              values.molarMass
+            engine.calculate(
+              input
             );
-
-        } else if (
-          mode === "molarity" &&
-          typeof engine.molarity ===
-            "function"
-        ) {
-
-          result =
-            engine.molarity(
-              values.moles,
-              values.volume
-            );
-
-        } else if (
-          mode === "gas" &&
-          typeof engine.idealGasVolume ===
-            "function"
-        ) {
-
-          result =
-            engine.idealGasVolume(
-              values.pressure,
-              values.temperature
-            );
-
-        } else if (
-          mode === "ph" &&
-          typeof engine.pH ===
-            "function"
-        ) {
-
-          result =
-            engine.pH(
-              values.concentration
-            );
-
-        } else if (
-          mode === "heat" &&
-          typeof engine.heat ===
-            "function"
-        ) {
-
-          result =
-            engine.heat(
-              values.mass,
-              values.specificHeat,
-              values.deltaTemperature
-            );
-        }
+        } catch (_) {}
       }
 
-      if (result === null) {
-
+      if (
+        result == null
+      ) {
         result =
-          "Enter valid values.";
+          tryChemistryEngine(
+            engine,
+            input
+          );
       }
 
-      displayAnswer(
-        getAnswerBox(
-          $("#panel-chemistry")
-        ),
-        result
+      if (
+        result == null
+      ) {
+        throw new Error(
+          "Enter a supported chemistry calculation."
+        );
+      }
+
+      const output =
+        extractResult(
+          result
+        ) ??
+        result;
+
+      showResult(
+        output,
+        "chemistry"
       );
 
       addHistory(
         "Chemistry",
-        mode,
-        result
+        input,
+        output
       );
 
     } catch (error) {
-
       showError(
         error.message ||
-          "Could not calculate.",
-        container
+          "Chemistry calculation failed."
       );
     }
   }
 
-  function setupChemistry() {
+  function tryChemistryEngine(
+    engine,
+    input
+  ) {
+    if (!engine) {
+      return null;
+    }
 
-    $$(".chemistry-selector [data-chemistry-mode], .chemistry-selector [data-mode]")
-      .forEach((button) => {
+    const values =
+      (
+        String(input).match(
+          /-?\d+(?:\.\d+)?/g
+        ) || []
+      ).map(Number);
 
-        button.addEventListener(
-          "click",
-          () => {
+    const lower =
+      input.toLowerCase();
 
-            state.chemistryMode =
-              button.dataset.chemistryMode ||
-              button.dataset.mode ||
-              state.chemistryMode;
+    try {
+      if (
+        lower.includes("moles") &&
+        lower.includes("mass") &&
+        typeof engine.molesFromMass ===
+          "function"
+      ) {
+        return engine.molesFromMass(
+          values[0],
+          values[1]
+        );
+      }
 
-            button.parentElement
-              ?.querySelectorAll("button")
-              .forEach((item) => {
+      if (
+        lower.includes("molarity") &&
+        typeof engine.molarity ===
+          "function"
+      ) {
+        return engine.molarity(
+          values[0],
+          values[1]
+        );
+      }
 
-                item.classList.toggle(
-                  "active",
-                  item === button
-                );
+      if (
+        lower.includes("ph") &&
+        typeof engine.pH ===
+          "function"
+      ) {
+        return engine.pH(
+          values[0]
+        );
+      }
 
-              });
+      if (
+        lower.includes("ideal gas") &&
+        typeof engine.idealGasVolume ===
+          "function"
+      ) {
+        return engine.idealGasVolume(
+          values[0],
+          values[1],
+          values[2]
+        );
+      }
 
-            renderChemistryFields();
-          }
+      if (
+        lower.includes("heat") &&
+        typeof engine.heat ===
+          "function"
+      ) {
+        return engine.heat(
+          values[0],
+          values[1],
+          values[2]
+        );
+      }
+
+    } catch (_) {}
+
+    return null;
+  }
+
+  /* =======================================================
+     STATISTICS
+  ======================================================= */
+
+  function parseNumberList(
+    input
+  ) {
+    const numbers =
+      String(input)
+        .split(/[\s,;]+/)
+        .map(Number)
+        .filter(
+          Number.isFinite
         );
 
-      });
-
-    const button =
-      $("#calculateChemistry") ||
-      $('[data-action="calculate-chemistry"]');
-
-    if (button) {
-
-      button.addEventListener(
-        "click",
-        calculateChemistry
+    if (!numbers.length) {
+      throw new Error(
+        "Enter numbers separated by commas."
       );
     }
 
-    renderChemistryFields();
+    return numbers;
   }
 
-  /* ========================================================
-     STATISTICS
-  ======================================================== */
-
-  function parseNumbers(value) {
-
-    return String(value || "")
-      .split(/[\s,;]+/)
-      .map(Number)
-      .filter(Number.isFinite);
-  }
-
-  function calculateStatistics() {
-
+  function runStatistics() {
     const input =
-      $("#statisticsInput");
-
-    if (!input) return;
-
-    const numbers =
-      parseNumbers(
-        input.value
+      getToolInput(
+        "statistics"
       );
 
-    if (!numbers.length) {
+    if (!input) {
+      toast(
+        "Enter a data set."
+      );
+      return;
+    }
 
+    try {
+      const numbers =
+        parseNumberList(
+          input
+        );
+
+      const engine =
+        window.NOVERA_STATISTICS;
+
+      let result = null;
+
+      if (
+        engine &&
+        typeof engine.calculate ===
+          "function"
+      ) {
+        try {
+          result =
+            engine.calculate(
+              numbers
+            );
+        } catch (_) {}
+      }
+
+      if (
+        result == null
+      ) {
+        result =
+          statisticsFallback(
+            numbers
+          );
+      }
+
+      const output =
+        extractResult(
+          result
+        ) ??
+        result;
+
+      showResult(
+        output,
+        "statistics"
+      );
+
+      addHistory(
+        "Statistics",
+        input,
+        output
+      );
+
+    } catch (error) {
       showError(
-        "Enter numbers separated by commas.",
-        input
+        error.message ||
+          "Statistics calculation failed."
+      );
+    }
+  }
+
+  function statisticsFallback(
+    numbers
+  ) {
+    const sorted =
+      [...numbers].sort(
+        (a, b) => a - b
+      );
+
+    const sum =
+      numbers.reduce(
+        (a, b) => a + b,
+        0
+      );
+
+    const mean =
+      sum / numbers.length;
+
+    const median =
+      sorted.length % 2
+        ? sorted[
+            Math.floor(
+              sorted.length / 2
+            )
+          ]
+        : (
+            sorted[
+              sorted.length / 2 - 1
+            ] +
+            sorted[
+              sorted.length / 2
+            ]
+          ) / 2;
+
+    const frequencies =
+      new Map();
+
+    numbers.forEach(
+      (number) => {
+        frequencies.set(
+          number,
+          (frequencies.get(
+            number
+          ) || 0) + 1
+        );
+      }
+    );
+
+    const maxFrequency =
+      Math.max(
+        ...frequencies.values()
+      );
+
+    const modes =
+      [...frequencies.entries()]
+        .filter(
+          ([, count]) =>
+            count ===
+            maxFrequency
+        )
+        .map(
+          ([value]) =>
+            value
+        );
+
+    const range =
+      sorted[
+        sorted.length - 1
+      ] -
+      sorted[0];
+
+    const variance =
+      numbers.reduce(
+        (total, value) =>
+          total +
+          Math.pow(
+            value - mean,
+            2
+          ),
+        0
+      ) /
+      numbers.length;
+
+    const standardDeviation =
+      Math.sqrt(
+        variance
+      );
+
+    return `
+      <div class="stats-result">
+        <strong>Mean:</strong>
+        ${cleanNumber(mean)}
+        <br>
+        <strong>Median:</strong>
+        ${cleanNumber(median)}
+        <br>
+        <strong>Mode:</strong>
+        ${modes
+          .map(cleanNumber)
+          .join(", ")}
+        <br>
+        <strong>Range:</strong>
+        ${cleanNumber(range)}
+        <br>
+        <strong>Population SD:</strong>
+        ${cleanNumber(
+          standardDeviation
+        )}
+      </div>
+    `;
+  }
+
+  /* =======================================================
+     NAMED NUMBER HELPER
+  ======================================================= */
+
+  function extractNamedNumber(
+    input,
+    name
+  ) {
+    const regex =
+      new RegExp(
+        `${name}\\s*[:=]?\\s*(-?\\d+(?:\\.\\d+)?)`,
+        "i"
+      );
+
+    const match =
+      String(input).match(
+        regex
+      );
+
+    return match
+      ? Number(match[1])
+      : NaN;
+  }
+
+  /* =======================================================
+     INPUT DETECTION
+  ======================================================= */
+
+  function toolSelectors(
+    tool
+  ) {
+    const map = {
+      calculator: [
+        "#calculatorInput",
+        "#calcInput",
+        "[data-tool-input='calculator']",
+        ".calculator-input"
+      ],
+
+      algebra: [
+        "#algebraInput",
+        "[data-tool-input='algebra']",
+        ".algebra-input"
+      ],
+
+      graph: [
+        "#graphInput",
+        "#functionInput",
+        "[data-tool-input='graph']",
+        ".graph-input"
+      ],
+
+      physics: [
+        "#physicsInput",
+        "[data-tool-input='physics']",
+        ".physics-input"
+      ],
+
+      chemistry: [
+        "#chemistryInput",
+        "[data-tool-input='chemistry']",
+        ".chemistry-input"
+      ],
+
+      statistics: [
+        "#statisticsInput",
+        "#statsInput",
+        "[data-tool-input='statistics']",
+        ".statistics-input"
+      ]
+    };
+
+    return map[tool] || [];
+  }
+
+  function getToolInput(
+    tool
+  ) {
+    for (
+      const selector of toolSelectors(
+        tool
+      )
+    ) {
+      const input =
+        document.querySelector(
+          selector
+        );
+
+      if (input) {
+        return input.value.trim();
+      }
+    }
+
+    /*
+      Fallback:
+      Find visible input/textarea inside active panel.
+    */
+
+    const panel =
+      document.querySelector(
+        `[data-tool-panel="${tool}"], #${tool}Panel, .tool-panel.active`
+      );
+
+    if (panel) {
+      const input =
+        panel.querySelector(
+          "input:not([type='button']):not([type='submit']), textarea"
+        );
+
+      if (input) {
+        return input.value.trim();
+      }
+    }
+
+    return "";
+  }
+
+  function setToolInput(
+    tool,
+    value
+  ) {
+    for (
+      const selector of toolSelectors(
+        tool
+      )
+    ) {
+      const input =
+        document.querySelector(
+          selector
+        );
+
+      if (input) {
+        input.value =
+          value;
+
+        input.focus();
+
+        return;
+      }
+    }
+  }
+
+  /* =======================================================
+     RESULT DISPLAY
+  ======================================================= */
+
+  function findResultBox() {
+    return (
+      document.querySelector(
+        "#toolResult"
+      ) ||
+      document.querySelector(
+        "#result"
+      ) ||
+      document.querySelector(
+        ".tool-result"
+      ) ||
+      document.querySelector(
+        ".result-box"
+      ) ||
+      document.querySelector(
+        "[data-result]"
+      )
+    );
+  }
+
+  function showResult(
+    result,
+    tool
+  ) {
+    const box =
+      findResultBox();
+
+    if (!box) {
+      console.log(
+        `[Novera ${tool}]`,
+        result
       );
 
       return;
     }
 
-    try {
+    box.classList.remove(
+      "error"
+    );
 
-      let result = null;
+    /*
+      If result is HTML produced intentionally
+      by our controller, render it.
 
-      const engine =
-        window.NOVERA_STATISTICS;
+      Otherwise escape the result.
+    */
 
-      const mode =
-        state.statisticsMode;
-
-      if (engine) {
-
-        if (
-          mode === "mean" &&
-          typeof engine.mean ===
-            "function"
-        ) {
-
-          result =
-            engine.mean(numbers);
-
-        } else if (
-          mode === "median" &&
-          typeof engine.median ===
-            "function"
-        ) {
-
-          result =
-            engine.median(numbers);
-
-        } else if (
-          mode === "mode" &&
-          typeof engine.mode ===
-            "function"
-        ) {
-
-          result =
-            engine.mode(numbers);
-
-        } else if (
-          mode === "range" &&
-          typeof engine.range ===
-            "function"
-        ) {
-
-          result =
-            engine.range(numbers);
-
-        } else if (
-          mode === "sd" &&
-          typeof engine.standardDeviation ===
-            "function"
-        ) {
-
-          result =
-            engine.standardDeviation(
-              numbers
-            );
-        }
-      }
-
-      if (result === null) {
-
-        const sum =
-          numbers.reduce(
-            (a, b) => a + b,
-            0
-          );
-
-        if (
-          mode === "mean"
-        ) {
-
-          result =
-            sum / numbers.length;
-
-        } else if (
-          mode === "median"
-        ) {
-
-          const sorted =
-            [...numbers].sort(
-              (a, b) => a - b
-            );
-
-          const middle =
-            Math.floor(
-              sorted.length / 2
-            );
-
-          result =
-            sorted.length % 2
-              ? sorted[middle]
-              : (
-                  sorted[middle - 1] +
-                  sorted[middle]
-                ) / 2;
-
-        } else if (
-          mode === "range"
-        ) {
-
-          result =
-            Math.max(...numbers) -
-            Math.min(...numbers);
-
-        } else if (
-          mode === "mode"
-        ) {
-
-          const counts = {};
-
-          numbers.forEach(
-            (n) => {
-
-              counts[n] =
-                (counts[n] || 0) + 1;
-
-            }
-          );
-
-          const max =
-            Math.max(
-              ...Object.values(
-                counts
-              )
-            );
-
-          result =
-            Object.keys(counts)
-              .filter(
-                (key) =>
-                  counts[key] === max
-              )
-              .join(", ");
-
-        } else if (
-          mode === "sd"
-        ) {
-
-          const mean =
-            sum / numbers.length;
-
-          result =
-            Math.sqrt(
-              numbers.reduce(
-                (total, n) =>
-                  total +
-                  Math.pow(
-                    n - mean,
-                    2
-                  ),
-                0
-              ) /
-                numbers.length
-            );
-        }
-      }
-
-      displayAnswer(
-        getAnswerBox(
-          $("#panel-statistics")
-        ),
+    if (
+      typeof result === "string" &&
+      /<(div|br|strong|span)[\s>]/i.test(
         result
-      );
-
-      addHistory(
-        "Statistics",
-        input.value,
-        result
-      );
-
-    } catch (error) {
-
-      showError(
-        error.message ||
-          "Could not analyse data.",
-        input
-      );
+      )
+    ) {
+      box.innerHTML = result;
+    } else {
+      box.textContent =
+        String(result);
     }
+
+    box.classList.add(
+      "has-result"
+    );
   }
 
-  function setupStatistics() {
+  function showError(
+    message
+  ) {
+    const box =
+      findResultBox();
 
-    $$(".statistics-selector [data-statistics-mode], .statistics-selector [data-mode]")
+    if (!box) {
+      toast(message);
+      return;
+    }
+
+    box.classList.add(
+      "error"
+    );
+
+    box.textContent =
+      message;
+  }
+
+  /* =======================================================
+     TOOL ACTIVATION
+  ======================================================= */
+
+  function normalizeToolName(
+    value
+  ) {
+    const raw =
+      String(value || "")
+        .toLowerCase()
+        .replace(/\s+/g, "");
+
+    const aliases = {
+      calc: "calculator",
+      calculator: "calculator",
+
+      algebra: "algebra",
+
+      graph: "graph",
+      graphing: "graph",
+
+      physics: "physics",
+
+      chemistry: "chemistry",
+      chem: "chemistry",
+
+      statistics: "statistics",
+      statistic: "statistics",
+      stats: "statistics"
+    };
+
+    return (
+      aliases[raw] ||
+      raw
+    );
+  }
+
+  function activateTool(
+    tool
+  ) {
+    const normalized =
+      normalizeToolName(
+        tool
+      );
+
+    state.activeTool =
+      normalized;
+
+    /*
+      Common tab selectors.
+    */
+
+    $$(".tool-tab, .tool-nav button, [data-tool]")
       .forEach((button) => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            state.statisticsMode =
-              button.dataset.statisticsMode ||
-              button.dataset.mode ||
-              state.statisticsMode;
-
-            button.parentElement
-              ?.querySelectorAll("button")
-              .forEach((item) => {
-
-                item.classList.toggle(
-                  "active",
-                  item === button
-                );
-
-              });
-
-          }
-        );
-
-      });
-
-    const button =
-      $("#calculateStatistics") ||
-      $("#analyseStatistics") ||
-      $("#statisticsAnalyse") ||
-      $('[data-action="calculate-statistics"]');
-
-    if (button) {
-
-      button.addEventListener(
-        "click",
-        calculateStatistics
-      );
-    }
-
-    const input =
-      $("#statisticsInput");
-
-    if (input) {
-
-      input.addEventListener(
-        "keydown",
-        (event) => {
-
-          if (
-            event.key === "Enter" &&
-            !event.shiftKey
-          ) {
-
-            event.preventDefault();
-
-            calculateStatistics();
-          }
-
-        }
-      );
-    }
-  }
-
-  /* ========================================================
-     THEME
-  ======================================================== */
-
-  function setupTheme() {
-
-    const button =
-      $("#themeToggle");
-
-    if (!button) return;
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        const current =
-          document.documentElement
-            .dataset.theme ||
-          document.body.dataset.theme ||
-          "dark";
-
-        const next =
-          current === "light"
-            ? "dark"
-            : "light";
-
-        document.documentElement
-          .dataset.theme =
-          next;
-
-        document.body.dataset.theme =
-          next;
-
-        try {
-
-          localStorage.setItem(
-            THEME_KEY,
-            next
+        const value =
+          normalizeToolName(
+            button.dataset.tool ||
+              button.dataset.toolName ||
+              button.textContent
           );
-
-        } catch (error) {}
-
-        updateThemeIcon();
-      }
-    );
-
-    try {
-
-      const saved =
-        localStorage.getItem(
-          THEME_KEY
-        );
-
-      if (
-        saved === "light" ||
-        saved === "dark"
-      ) {
-
-        document.documentElement
-          .dataset.theme =
-          saved;
-
-        document.body.dataset.theme =
-          saved;
-      }
-
-    } catch (error) {}
-
-    updateThemeIcon();
-  }
-
-  function updateThemeIcon() {
-
-    const icon =
-      $("#themeIcon");
-
-    if (!icon) return;
-
-    const theme =
-      document.documentElement
-        .dataset.theme ||
-      document.body.dataset.theme ||
-      "dark";
-
-    icon.textContent =
-      theme === "light"
-        ? "☀"
-        : "☾";
-  }
-
-  /* ========================================================
-     HERO
-  ======================================================== */
-
-  function setupHeroButtons() {
-
-    const start =
-      $("#startToolkit");
-
-    if (start) {
-
-      start.addEventListener(
-        "click",
-        () => {
-
-          activateTool(
-            "calculator",
-            true
-          );
-
-        }
-      );
-    }
-
-    const all =
-      $("#showAllTools");
-
-    if (all) {
-
-      all.addEventListener(
-        "click",
-        () => {
-
-          const section =
-            $("#tools") ||
-            $(".tool-selector-section") ||
-            $(".tool-grid");
-
-          if (section) {
-
-            section.scrollIntoView({
-              behavior: "smooth",
-              block: "start"
-            });
-
-          }
-
-        }
-      );
-    }
-  }
-
-  /* ========================================================
-     CLEAR WORKSPACE
-  ======================================================== */
-
-  function setupClearWorkspace() {
-
-    const button =
-      $("#clearWorkspace");
-
-    if (!button) return;
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        const panel =
-          findPanel(
-            state.activeTool
-          );
-
-        if (!panel) return;
-
-        panel
-          .querySelectorAll(
-            "input, textarea"
-          )
-          .forEach(
-            (input) => {
-              input.value = "";
-            }
-          );
-
-        panel
-          .querySelectorAll(
-            ".answer-value, .result-value, .tool-result, .result, [data-result], .answer"
-          )
-          .forEach(
-            (result) => {
-              result.textContent = "—";
-            }
-          );
-
-        if (
-          state.activeTool ===
-          "physics"
-        ) {
-
-          renderPhysicsFields();
-        }
-
-        if (
-          state.activeTool ===
-          "chemistry"
-        ) {
-
-          renderChemistryFields();
-        }
-
-        if (
-          state.activeTool ===
-          "graph"
-        ) {
-
-          const graph =
-            $("#graphDisplay");
-
-          if (graph) {
-
-            graph.innerHTML = `
-              <div class="graph-empty-state">
-                <span class="graph-empty-icon">∿</span>
-                <p>Your graph will appear here.</p>
-              </div>
-            `;
-
-          }
-        }
-
-      }
-    );
-  }
-
-  /* ========================================================
-     MOBILE MENU
-  ======================================================== */
-
-  function setupMobileMenu() {
-
-    const button =
-      $("#menuToggle") ||
-      $("#mobileMenuToggle");
-
-    const menu =
-      $("#mobileMenu") ||
-      $(".mobile-menu");
-
-    if (!button || !menu) return;
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        menu.classList.toggle(
-          "open"
-        );
 
         button.classList.toggle(
-          "open"
+          "active",
+          value === normalized
         );
+      });
 
+    /*
+      Common panels.
+    */
+
+    $$(".tool-panel").forEach(
+      (panel) => {
+        const value =
+          normalizeToolName(
+            panel.dataset.tool ||
+              panel.dataset.toolPanel ||
+              panel.id.replace(
+                /Panel$/i,
+                ""
+              )
+          );
+
+        panel.classList.toggle(
+          "active",
+          value === normalized
+        );
+      }
+    );
+
+    /*
+      Alternative panel structure.
+    */
+
+    $$("[data-tool-panel]").forEach(
+      (panel) => {
+        panel.classList.toggle(
+          "active",
+          normalizeToolName(
+            panel.dataset.toolPanel
+          ) === normalized
+        );
       }
     );
   }
 
-  /* ========================================================
+  /* =======================================================
+     RUN BUTTONS
+  ======================================================= */
+
+  function runActiveTool() {
+    switch (
+      normalizeToolName(
+        state.activeTool
+      )
+    ) {
+      case "calculator":
+        runCalculator();
+        break;
+
+      case "algebra":
+        runAlgebra();
+        break;
+
+      case "graph":
+        runGraph();
+        break;
+
+      case "physics":
+        runPhysics();
+        break;
+
+      case "chemistry":
+        runChemistry();
+        break;
+
+      case "statistics":
+        runStatistics();
+        break;
+
+      default:
+        toast(
+          "Select a toolkit."
+        );
+    }
+  }
+
+  function initToolButtons() {
+    /*
+      Tabs.
+    */
+
+    $$(
+      ".tool-tab, .tool-nav button, [data-tool]"
+    ).forEach((button) => {
+      button.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+
+          const tool =
+            button.dataset.tool ||
+            button.dataset.toolName ||
+            button.textContent;
+
+          activateTool(tool);
+        }
+      );
+    });
+
+    /*
+      Explicit run buttons.
+    */
+
+    $$(
+      "[data-run-tool], .run-tool, #calculateButton, #solveButton, #graphButton"
+    ).forEach((button) => {
+      button.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+
+          const tool =
+            button.dataset.runTool;
+
+          if (tool) {
+            activateTool(tool);
+          }
+
+          runActiveTool();
+        }
+      );
+    });
+
+    /*
+      Tool-specific buttons if present.
+    */
+
+    $$("[data-calculate]").forEach(
+      (button) => {
+        button.addEventListener(
+          "click",
+          (event) => {
+            event.preventDefault();
+
+            activateTool(
+              button.dataset.calculate
+            );
+
+            runActiveTool();
+          }
+        );
+      }
+    );
+  }
+
+  /* =======================================================
+     ENTER KEY
+  ======================================================= */
+
+  function initKeyboard() {
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (
+          event.key !== "Enter"
+        ) {
+          return;
+        }
+
+        const active =
+          document.activeElement;
+
+        if (
+          !active ||
+          !(
+            active.tagName ===
+              "INPUT" ||
+            active.tagName ===
+              "TEXTAREA"
+          )
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+
+        runActiveTool();
+      }
+    );
+  }
+
+  /* =======================================================
+     CALCULATOR QUICK CHIPS
+  ======================================================= */
+
+  function initCalculatorChips() {
+    $$(
+      "[data-calculation], .calculator-chip, .example-chip"
+    ).forEach((chip) => {
+      chip.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+
+          const value =
+            chip.dataset.calculation ||
+            chip.dataset.expression ||
+            chip.textContent.trim();
+
+          /*
+            Ignore labels that don't resemble
+            a calculation.
+          */
+
+          if (
+            !/[0-9]/.test(value)
+          ) {
+            return;
+          }
+
+          activateTool(
+            "calculator"
+          );
+
+          setToolInput(
+            "calculator",
+            value
+          );
+
+          runCalculator();
+        }
+      );
+    });
+  }
+
+  /* =======================================================
+     CLEAR WORKSPACE
+  ======================================================= */
+
+  function clearWorkspace() {
+    $$(
+      "input, textarea"
+    ).forEach((input) => {
+      if (
+        input.closest(
+          ".tool-panel, .tool-workspace, main"
+        )
+      ) {
+        input.value = "";
+      }
+    });
+
+    const box =
+      findResultBox();
+
+    if (box) {
+      box.textContent = "";
+      box.classList.remove(
+        "has-result",
+        "error"
+      );
+    }
+
+    toast(
+      "Workspace cleared."
+    );
+  }
+
+  function initClearButtons() {
+    $$(
+      "#clearButton, .clear-workspace, [data-clear]"
+    ).forEach((button) => {
+      button.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          clearWorkspace();
+        }
+      );
+    });
+
+    $$(
+      "#clearHistory, [data-clear-history]"
+    ).forEach((button) => {
+      button.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          clearHistory();
+        }
+      );
+    });
+  }
+
+  /* =======================================================
+     THEME
+  ======================================================= */
+
+  function initTheme() {
+    const toggle =
+      document.querySelector(
+        "#themeToggle, .theme-toggle, [data-theme-toggle]"
+      );
+
+    if (!toggle) return;
+
+    const saved =
+      localStorage.getItem(
+        "novera_toolkit_theme"
+      );
+
+    if (
+      saved === "light"
+    ) {
+      document.body.classList.add(
+        "light-mode"
+      );
+    }
+
+    toggle.addEventListener(
+      "click",
+      () => {
+        document.body.classList.toggle(
+          "light-mode"
+        );
+
+        localStorage.setItem(
+          "novera_toolkit_theme",
+          document.body.classList.contains(
+            "light-mode"
+          )
+            ? "light"
+            : "dark"
+        );
+      }
+    );
+  }
+
+  /* =======================================================
      REVEAL
-  ======================================================== */
+  ======================================================= */
 
-  function setupReveal() {
-
+  function initReveal() {
     const elements =
-      $$(".reveal");
+      $$(".reveal, .reveal-on-scroll");
 
-    if (!elements.length) return;
+    if (
+      !elements.length
+    ) {
+      return;
+    }
 
     if (
       !(
@@ -2074,13 +2960,11 @@
         window
       )
     ) {
-
       elements.forEach(
-        (el) => {
-          el.classList.add(
+        (element) =>
+          element.classList.add(
             "revealed"
-          );
-        }
+          )
       );
 
       return;
@@ -2089,14 +2973,11 @@
     const observer =
       new IntersectionObserver(
         (entries) => {
-
           entries.forEach(
             (entry) => {
-
               if (
                 entry.isIntersecting
               ) {
-
                 entry.target.classList.add(
                   "revealed"
                 );
@@ -2104,156 +2985,121 @@
                 observer.unobserve(
                   entry.target
                 );
-
               }
-
             }
           );
-
         },
         {
-          threshold: 0.08
+          threshold: 0.1
         }
       );
 
     elements.forEach(
-      (el) => {
-        observer.observe(el);
+      (element) =>
+        observer.observe(
+          element
+        )
+    );
+  }
+
+  /* =======================================================
+     RESPONSIVE GRAPH
+  ======================================================= */
+
+  function initResize() {
+    let timer;
+
+    window.addEventListener(
+      "resize",
+      () => {
+        clearTimeout(timer);
+
+        timer =
+          setTimeout(() => {
+            if (
+              state.activeTool ===
+              "graph"
+            ) {
+              const expression =
+                getGraphExpression();
+
+              if (
+                expression
+              ) {
+                try {
+                  drawGraph(
+                    expression
+                  );
+                } catch (_) {}
+              }
+            }
+          }, 150);
       }
     );
   }
 
-  /* ========================================================
-     KEYBOARD
-  ======================================================== */
-
-  function setupKeyboard() {
-
-    document.addEventListener(
-      "keydown",
-      (event) => {
-
-        if (
-          event.ctrlKey &&
-          event.key === "Enter"
-        ) {
-
-          event.preventDefault();
-
-          switch (
-            state.activeTool
-          ) {
-
-            case "calculator":
-              calculateCalculator();
-              break;
-
-            case "algebra":
-              solveAlgebra();
-              break;
-
-            case "graph":
-              plotGraph();
-              break;
-
-            case "physics":
-              calculatePhysics();
-              break;
-
-            case "chemistry":
-              calculateChemistry();
-              break;
-
-            case "statistics":
-              calculateStatistics();
-              break;
-
-          }
-
-        }
-
-      }
-    );
-  }
-
-  /* ========================================================
-     INIT
-  ======================================================== */
-
-  function init() {
-
-    setupToolCards();
-
-    setupCalculator();
-    setupAlgebra();
-    setupGraph();
-    setupPhysics();
-    setupChemistry();
-    setupStatistics();
-
-    setupTheme();
-    setupHeroButtons();
-    setupClearWorkspace();
-    setupMobileMenu();
-    setupReveal();
-    setupKeyboard();
-    setupHistory();
-
-    loadHistory();
-
-    activateTool(
-      "calculator",
-      false
-    );
-  }
-
-  /* ========================================================
+  /* =======================================================
      PUBLIC API
-  ======================================================== */
+  ======================================================= */
 
   window.NOVERA_TOOLKIT = {
-
     state,
 
     activateTool,
+    runActiveTool,
 
-    calculateCalculator,
+    calculate,
+    safeExpression,
 
-    solveAlgebra,
+    runCalculator,
+    runAlgebra,
+    runGraph,
+    runPhysics,
+    runChemistry,
+    runStatistics,
 
-    plotGraph,
+    clearHistory,
+    clearWorkspace,
 
-    calculatePhysics,
-
-    calculateChemistry,
-
-    calculateStatistics,
-
-    clearHistory
-
+    getHistory: () =>
+      state.history.slice()
   };
 
-  /* ========================================================
-     START
-  ======================================================== */
+  /* =======================================================
+     INIT
+  ======================================================= */
+
+  function init() {
+    initToolButtons();
+    initCalculatorChips();
+    initClearButtons();
+
+    initKeyboard();
+    initTheme();
+    initReveal();
+    initResize();
+
+    renderHistory();
+
+    /*
+      Default tool.
+    */
+
+    activateTool(
+      "calculator"
+    );
+  }
 
   if (
     document.readyState ===
     "loading"
   ) {
-
     document.addEventListener(
       "DOMContentLoaded",
-      init,
-      {
-        once: true
-      }
+      init
     );
-
   } else {
-
     init();
-
   }
 
 })();
