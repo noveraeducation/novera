@@ -1,502 +1,219 @@
 /* =========================================================
-   NOVERA — UNIVERSAL CALCULATOR
-   Simple interface • Powerful engine • No external libraries
-   ========================================================= */
+   NOVERA CALCULATOR ENGINE V2.0
+   Universal expression calculator
+========================================================= */
 
 (function () {
   "use strict";
 
-  const NOVERA_CALCULATOR = {
+  const history = [];
+
+  function cleanExpression(input) {
+    let s = String(input || "").trim();
 
-    name: "Novera Universal Calculator",
-    version: "1.0",
+    s = s
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
+      .replace(/−/g, "-")
+      .replace(/π/g, "pi")
+      .replace(/√/g, "sqrt")
+      .replace(/\^/g, "**");
 
-    /* -----------------------------------------------------
-       BASIC OPERATIONS
-    ----------------------------------------------------- */
+    return s;
+  }
 
-    add(a, b) {
-      return Number(a) + Number(b);
-    },
+  function factorial(n) {
+    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+      throw new Error("Factorial needs a non-negative integer.");
+    }
 
-    subtract(a, b) {
-      return Number(a) - Number(b);
-    },
+    if (n > 170) {
+      throw new Error("Number is too large.");
+    }
 
-    multiply(a, b) {
-      return Number(a) * Number(b);
-    },
+    let result = 1;
 
-    divide(a, b) {
-      if (Number(b) === 0) {
-        throw new Error("Cannot divide by zero.");
-      }
+    for (let i = 2; i <= n; i++) {
+      result *= i;
+    }
 
-      return Number(a) / Number(b);
-    },
+    return result;
+  }
 
-    power(a, b) {
-      return Math.pow(Number(a), Number(b));
-    },
+  function evaluate(expression) {
+    let s = cleanExpression(expression);
 
-    square(a) {
-      return Math.pow(Number(a), 2);
-    },
+    if (!s) {
+      throw new Error("Enter an expression.");
+    }
 
-    cube(a) {
-      return Math.pow(Number(a), 3);
-    },
+    // Percentage
+    s = s.replace(/(\d+(?:\.\d+)?)%/g, "($1/100)");
 
-    squareRoot(a) {
-      if (Number(a) < 0) {
-        throw new Error("Square root of a negative number is not real.");
-      }
+    // Factorial
+    s = s.replace(/(\d+(?:\.\d+)?)!/g, "factorial($1)");
 
-      return Math.sqrt(Number(a));
-    },
+    // Protect against dangerous characters.
+    if (!/^[0-9+\-*/().,\s_a-zA-Z**]+$/.test(s)) {
+      throw new Error("Invalid characters.");
+    }
 
-    cubeRoot(a) {
-      return Math.cbrt(Number(a));
-    },
+    const allowed = {
+      pi: Math.PI,
+      e: Math.E,
 
-    absolute(a) {
-      return Math.abs(Number(a));
-    },
+      sqrt: Math.sqrt,
+      abs: Math.abs,
+      floor: Math.floor,
+      ceil: Math.ceil,
+      round: Math.round,
 
+      sin: x => Math.sin(x * Math.PI / 180),
+      cos: x => Math.cos(x * Math.PI / 180),
+      tan: x => Math.tan(x * Math.PI / 180),
 
-    /* -----------------------------------------------------
-       PERCENTAGE
-    ----------------------------------------------------- */
+      asin: x => Math.asin(x) * 180 / Math.PI,
+      acos: x => Math.acos(x) * 180 / Math.PI,
+      atan: x => Math.atan(x) * 180 / Math.PI,
 
-    percentage(value, percent) {
-      return (Number(value) * Number(percent)) / 100;
-    },
+      log: Math.log10,
+      ln: Math.log,
+      exp: Math.exp,
 
-    percentageOf(part, whole) {
-      if (Number(whole) === 0) {
-        throw new Error("Whole cannot be zero.");
-      }
+      factorial
+    };
 
-      return (Number(part) / Number(whole)) * 100;
-    },
+    const names = Object.keys(allowed);
+    const values = Object.values(allowed);
 
-    percentageIncrease(original, increase) {
-      return Number(original) * (1 + Number(increase) / 100);
-    },
+    let fn;
 
-    percentageDecrease(original, decrease) {
-      return Number(original) * (1 - Number(decrease) / 100);
-    },
+    try {
+      fn = Function(
+        ...names,
+        `"use strict"; return (${s});`
+      );
+    } catch {
+      throw new Error("Invalid expression.");
+    }
 
-    percentageChange(oldValue, newValue) {
-      if (Number(oldValue) === 0) {
-        throw new Error("Original value cannot be zero.");
-      }
+    let answer;
 
-      return ((Number(newValue) - Number(oldValue)) / Number(oldValue)) * 100;
-    },
+    try {
+      answer = fn(...values);
+    } catch {
+      throw new Error("Could not calculate.");
+    }
 
+    if (typeof answer !== "number" || !Number.isFinite(answer)) {
+      throw new Error("Result is not a valid number.");
+    }
 
-    /* -----------------------------------------------------
-       FRACTIONS
-    ----------------------------------------------------- */
+    return answer;
+  }
 
-    gcd(a, b) {
-      a = Math.abs(Math.trunc(a));
-      b = Math.abs(Math.trunc(b));
+  function format(value, decimals = 10) {
+    if (!Number.isFinite(value)) return "Error";
 
-      while (b !== 0) {
-        const temp = b;
-        b = a % b;
-        a = temp;
-      }
+    if (Math.abs(value) < 1e-12) {
+      value = 0;
+    }
 
-      return a;
-    },
+    const rounded = Number(value.toFixed(decimals));
 
-    simplifyFraction(numerator, denominator) {
+    return rounded.toLocaleString("en-US", {
+      maximumFractionDigits: decimals
+    });
+  }
 
-      numerator = Number(numerator);
-      denominator = Number(denominator);
+  function calculate(expression) {
+    const answer = evaluate(expression);
 
-      if (denominator === 0) {
-        throw new Error("Denominator cannot be zero.");
-      }
+    const item = {
+      expression: String(expression),
+      answer,
+      display: format(answer),
+      time: Date.now()
+    };
 
-      const divisor = this.gcd(numerator, denominator);
+    history.unshift(item);
 
-      numerator /= divisor;
-      denominator /= divisor;
+    if (history.length > 50) {
+      history.pop();
+    }
 
-      if (denominator < 0) {
-        numerator *= -1;
-        denominator *= -1;
-      }
+    return item;
+  }
 
-      return {
-        numerator,
-        denominator,
-        text: `${numerator}/${denominator}`
-      };
-    },
+  function percentage(value, percent) {
+    return Number(value) * Number(percent) / 100;
+  }
 
-    fractionToDecimal(numerator, denominator) {
-      if (Number(denominator) === 0) {
-        throw new Error("Denominator cannot be zero.");
-      }
+  function fraction(numerator, denominator) {
+    if (Number(denominator) === 0) {
+      throw new Error("Cannot divide by zero.");
+    }
 
-      return Number(numerator) / Number(denominator);
-    },
+    return Number(numerator) / Number(denominator);
+  }
 
+  function percentageChange(oldValue, newValue) {
+    oldValue = Number(oldValue);
+    newValue = Number(newValue);
 
-    /* -----------------------------------------------------
-       ROUNDING
-    ----------------------------------------------------- */
+    if (oldValue === 0) {
+      throw new Error("Original value cannot be zero.");
+    }
 
-    round(value, decimals = 2) {
+    return ((newValue - oldValue) / Math.abs(oldValue)) * 100;
+  }
 
-      const factor = Math.pow(10, Number(decimals));
-
-      return Math.round(
-        (Number(value) + Number.EPSILON) * factor
-      ) / factor;
-    },
-
-    floor(value) {
-      return Math.floor(Number(value));
-    },
-
-    ceil(value) {
-      return Math.ceil(Number(value));
-    },
-
-
-    /* -----------------------------------------------------
-       LOGARITHMS & EXPONENTIALS
-    ----------------------------------------------------- */
-
-    naturalLog(value) {
-
-      if (Number(value) <= 0) {
-        throw new Error("Logarithm requires a positive number.");
-      }
-
-      return Math.log(Number(value));
-    },
-
-    log10(value) {
-
-      if (Number(value) <= 0) {
-        throw new Error("Logarithm requires a positive number.");
-      }
-
-      return Math.log10(Number(value));
-    },
-
-    exponential(value) {
-      return Math.exp(Number(value));
-    },
-
-
-    /* -----------------------------------------------------
-       TRIGONOMETRY
-    ----------------------------------------------------- */
-
-    toRadians(degrees) {
-      return Number(degrees) * Math.PI / 180;
-    },
-
-    toDegrees(radians) {
-      return Number(radians) * 180 / Math.PI;
-    },
-
-    sinDegrees(degrees) {
-      return Math.sin(this.toRadians(degrees));
-    },
-
-    cosDegrees(degrees) {
-      return Math.cos(this.toRadians(degrees));
-    },
-
-    tanDegrees(degrees) {
-      return Math.tan(this.toRadians(degrees));
-    },
-
-    asinDegrees(value) {
-      return this.toDegrees(Math.asin(Number(value)));
-    },
-
-    acosDegrees(value) {
-      return this.toDegrees(Math.acos(Number(value)));
-    },
-
-    atanDegrees(value) {
-      return this.toDegrees(Math.atan(Number(value)));
-    },
-
-
-    /* -----------------------------------------------------
-       GEOMETRY
-    ----------------------------------------------------- */
-
-    circleArea(radius) {
-      return Math.PI * Math.pow(Number(radius), 2);
-    },
-
-    circleCircumference(radius) {
-      return 2 * Math.PI * Number(radius);
-    },
-
-    rectangleArea(length, width) {
-      return Number(length) * Number(width);
-    },
-
-    rectanglePerimeter(length, width) {
-      return 2 * (Number(length) + Number(width));
-    },
-
-    triangleArea(base, height) {
-      return 0.5 * Number(base) * Number(height);
-    },
-
-    cubeVolume(side) {
-      return Math.pow(Number(side), 3);
-    },
-
-    cuboidVolume(length, width, height) {
-      return Number(length) *
-             Number(width) *
-             Number(height);
-    },
-
-
-    /* -----------------------------------------------------
-       SCIENTIFIC NOTATION
-    ----------------------------------------------------- */
-
-    scientific(value) {
-
-      const number = Number(value);
-
-      if (!Number.isFinite(number)) {
-        throw new Error("Invalid number.");
-      }
-
-      return number.toExponential();
-    },
-
-
-    /* -----------------------------------------------------
-       UNIT CONVERSIONS
-    ----------------------------------------------------- */
-
-    conversions: {
-
+  function unitConversion(value, from, to) {
+    const conversions = {
       length: {
-        metersToKilometers(value) {
-          return Number(value) / 1000;
-        },
-
-        kilometersToMeters(value) {
-          return Number(value) * 1000;
-        },
-
-        centimetersToMeters(value) {
-          return Number(value) / 100;
-        },
-
-        metersToCentimeters(value) {
-          return Number(value) * 100;
-        }
+        m: 1,
+        cm: 0.01,
+        mm: 0.001,
+        km: 1000,
+        in: 0.0254,
+        ft: 0.3048,
+        yd: 0.9144,
+        mile: 1609.344
       },
 
       mass: {
-        gramsToKilograms(value) {
-          return Number(value) / 1000;
-        },
-
-        kilogramsToGrams(value) {
-          return Number(value) * 1000;
-        }
+        kg: 1,
+        g: 0.001,
+        mg: 0.000001,
+        lb: 0.45359237
       },
 
       time: {
-        minutesToSeconds(value) {
-          return Number(value) * 60;
-        },
-
-        hoursToMinutes(value) {
-          return Number(value) * 60;
-        },
-
-        daysToHours(value) {
-          return Number(value) * 24;
-        }
-      },
-
-      temperature: {
-
-        celsiusToFahrenheit(value) {
-          return (Number(value) * 9 / 5) + 32;
-        },
-
-        fahrenheitToCelsius(value) {
-          return (Number(value) - 32) * 5 / 9;
-        },
-
-        celsiusToKelvin(value) {
-          return Number(value) + 273.15;
-        },
-
-        kelvinToCelsius(value) {
-          return Number(value) - 273.15;
-        }
+        s: 1,
+        min: 60,
+        h: 3600,
+        day: 86400
       }
-    },
+    };
 
-
-    /* -----------------------------------------------------
-       DISPLAY FORMAT
-    ----------------------------------------------------- */
-
-    format(value, decimals = 6) {
-
-      if (!Number.isFinite(Number(value))) {
-        return "Error";
+    for (const category of Object.values(conversions)) {
+      if (category[from] !== undefined && category[to] !== undefined) {
+        return Number(value) * category[from] / category[to];
       }
-
-      const rounded = this.round(value, decimals);
-
-      return Number(rounded).toLocaleString("en-IN", {
-        maximumFractionDigits: decimals
-      });
-    },
-
-
-    /* -----------------------------------------------------
-       SAFE SIMPLE EXPRESSION CALCULATOR
-       Supports:
-       +  -  *  /  ^  ( )
-    ----------------------------------------------------- */
-
-    calculate(expression) {
-
-      if (typeof expression !== "string") {
-        throw new Error("Enter a calculation.");
-      }
-
-      let exp = expression.trim();
-
-      if (!exp) {
-        throw new Error("Enter a calculation.");
-      }
-
-      /* Convert common symbols */
-      exp = exp
-        .replace(/×/g, "*")
-        .replace(/÷/g, "/")
-        .replace(/−/g, "-")
-        .replace(/\^/g, "**");
-
-      /*
-       * Only allow numbers, operators, decimal points,
-       * spaces and parentheses.
-       */
-      if (!/^[0-9+\-*/().\s*]+$/.test(exp)) {
-        throw new Error("Only basic mathematical operations are allowed.");
-      }
-
-      /*
-       * Prevent dangerous repeated operators.
-       */
-      if (/[*\/]{2,}/.test(exp)) {
-        throw new Error("Invalid expression.");
-      }
-
-      try {
-
-        const result = Function(
-          `"use strict"; return (${exp})`
-        )();
-
-        if (!Number.isFinite(result)) {
-          throw new Error("Invalid calculation.");
-        }
-
-        return result;
-
-      } catch (error) {
-        throw new Error("Unable to calculate this expression.");
-      }
-    },
-
-
-    /* -----------------------------------------------------
-       MEMORY
-    ----------------------------------------------------- */
-
-    memory: 0,
-
-    memoryClear() {
-      this.memory = 0;
-      return this.memory;
-    },
-
-    memoryAdd(value) {
-      this.memory += Number(value);
-      return this.memory;
-    },
-
-    memorySubtract(value) {
-      this.memory -= Number(value);
-      return this.memory;
-    },
-
-    memoryRecall() {
-      return this.memory;
-    },
-
-
-    /* -----------------------------------------------------
-       CALCULATION HISTORY
-    ----------------------------------------------------- */
-
-    history: [],
-
-    addHistory(expression, result) {
-
-      this.history.unshift({
-        expression: String(expression),
-        result: result,
-        time: new Date().toISOString()
-      });
-
-      /*
-       * Keep the tool lightweight.
-       */
-      if (this.history.length > 50) {
-        this.history = this.history.slice(0, 50);
-      }
-
-      return this.history;
-    },
-
-    clearHistory() {
-      this.history = [];
-      return this.history;
-    },
-
-    getHistory() {
-      return [...this.history];
     }
 
+    throw new Error("Unsupported unit conversion.");
+  }
+
+  window.NOVERA_CALCULATOR = {
+    evaluate,
+    calculate,
+    format,
+    percentage,
+    fraction,
+    percentageChange,
+    unitConversion,
+    factorial,
+    history
   };
-
-
-  /* -------------------------------------------------------
-     MAKE AVAILABLE TO THE NOVERA WEBSITE
-  ------------------------------------------------------- */
-
-  window.NOVERA_CALCULATOR = NOVERA_CALCULATOR;
-
 })();
