@@ -1,31 +1,23 @@
 /* ========================================================
-   NOVERA TOOLKIT — UI ENGINE
-   Version 1.1
-   Connects:
+   NOVERA TOOLKIT — CONTROLLER
+   Version 2.0
+   Connects the existing Novera tool engines to the UI.
+
+   Works with:
    Calculator
    Algebra
    Graph
    Physics
    Chemistry
    Statistics
+
+   No backend
+   No API
+   No external library
 ======================================================== */
 
-(function () {
+(() => {
   "use strict";
-
-  /* ======================================================
-     SHORTCUTS
-  ====================================================== */
-
-  const $ = (selector, root = document) =>
-    root.querySelector(selector);
-
-  const $$ = (selector, root = document) =>
-    Array.from(root.querySelectorAll(selector));
-
-  const byId = (id) =>
-    document.getElementById(id);
-
 
   /* ======================================================
      STATE
@@ -39,26 +31,107 @@
     physicsMode: "speed",
     chemistryMode: "moles",
     statisticsMode: "mean",
-    history: loadHistory()
+    history: [],
+    memory: 0
   };
 
+  const TOOL_NAMES = [
+    "calculator",
+    "algebra",
+    "graph",
+    "physics",
+    "chemistry",
+    "statistics"
+  ];
+
+  const HISTORY_KEY = "novera_toolkit_history_v2";
+  const MEMORY_KEY = "novera_calculator_memory_v2";
 
   /* ======================================================
-     DOM READY
+     DOM HELPERS
+  ====================================================== */
+
+  const $ = (selector, root = document) =>
+    root.querySelector(selector);
+
+  const $$ = (selector, root = document) =>
+    Array.from(root.querySelectorAll(selector));
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function text(value) {
+    if (value === null || value === undefined) return "";
+    return String(value);
+  }
+
+  function escapeHTML(value) {
+    return text(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function number(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function cleanNumber(value) {
+    const n = Number(value);
+
+    if (!Number.isFinite(n)) return value;
+
+    if (Math.abs(n) < 1e-12) return 0;
+
+    return Number(n.toFixed(12));
+  }
+
+  function formatNumber(value) {
+    const n = Number(value);
+
+    if (!Number.isFinite(n)) return text(value);
+
+    if (Math.abs(n) >= 1e10 || (Math.abs(n) > 0 && Math.abs(n) < 1e-7)) {
+      return n.toExponential(8);
+    }
+
+    return Number(n.toFixed(10)).toString();
+  }
+
+  /* ======================================================
+     ENGINE ACCESS
+  ====================================================== */
+
+  function engine(name) {
+    return window[name] || null;
+  }
+
+  const engines = {
+    calculator: () => engine("NOVERA_CALCULATOR"),
+    algebra: () => engine("NOVERA_ALGEBRA"),
+    graph: () => engine("NOVERA_GRAPH"),
+    physics: () => engine("NOVERA_PHYSICS"),
+    chemistry: () => engine("NOVERA_CHEMISTRY"),
+    statistics: () => engine("NOVERA_STATISTICS")
+  };
+
+  /* ======================================================
+     INITIALIZATION
   ====================================================== */
 
   document.addEventListener("DOMContentLoaded", init);
 
-
   function init() {
-
-    setupPageLoader();
+    loadState();
+    setupLoader();
     setupHeader();
     setupTheme();
     setupToolCards();
     setupPanels();
-
-    setupHeroActions();
 
     setupCalculator();
     setupAlgebra();
@@ -68,479 +141,264 @@
     setupStatistics();
 
     setupHistory();
+    setupHeroButtons();
+    setupWorkspaceControls();
     setupKeyboard();
-    setupRevealAnimations();
+    setupReveal();
 
+    activateTool(state.activeTool);
+
+    updateThemeIcon();
     renderHistory();
 
-    activateTool("calculator");
+    window.setTimeout(() => {
+      document.body.classList.add("toolkit-ready");
+    }, 80);
   }
 
-
   /* ======================================================
-     PAGE LOADER
+     LOADER
   ====================================================== */
 
-  function setupPageLoader() {
-
-    const loader = $(".page-loader");
+  function setupLoader() {
+    const loader = $(".loader");
 
     if (!loader) return;
 
-    window.addEventListener("load", function () {
-
-      setTimeout(function () {
-        loader.classList.add("loaded");
-      }, 350);
-
-    });
-
-    setTimeout(function () {
+    window.setTimeout(() => {
       loader.classList.add("loaded");
-    }, 1800);
+
+      window.setTimeout(() => {
+        loader.remove();
+      }, 600);
+    }, 350);
   }
 
-
   /* ======================================================
-     HEADER
+     HEADER / MOBILE MENU
   ====================================================== */
 
   function setupHeader() {
+    const menuButton =
+      $("#menuToggle") ||
+      $(".menu-toggle") ||
+      $(".mobile-menu-button");
 
-    const header = $(".toolkit-header");
+    const mobileMenu =
+      $("#mobileMenu") ||
+      $(".mobile-menu") ||
+      $(".nav-mobile");
 
-    if (!header) return;
+    if (!menuButton || !mobileMenu) return;
 
-    function updateHeader() {
+    menuButton.addEventListener("click", () => {
+      mobileMenu.classList.toggle("open");
+      menuButton.classList.toggle("active");
+    });
 
-      if (window.scrollY > 20) {
-        header.classList.add("scrolled");
-      } else {
-        header.classList.remove("scrolled");
-      }
-
-    }
-
-    updateHeader();
-
-    window.addEventListener(
-      "scroll",
-      updateHeader,
-      { passive: true }
-    );
+    $$(".mobile-menu a, .nav-mobile a").forEach(link => {
+      link.addEventListener("click", () => {
+        mobileMenu.classList.remove("open");
+        menuButton.classList.remove("active");
+      });
+    });
   }
-
 
   /* ======================================================
      THEME
   ====================================================== */
 
   function setupTheme() {
-
-    const toggle =
-      $("#themeToggle") ||
-      $(".theme-toggle") ||
-      $("[data-theme-toggle]");
-
-    let saved = null;
-
-    try {
-      saved =
-        localStorage.getItem(
-          "novera-toolkit-theme"
-        );
-    } catch {
-      saved = null;
-    }
-
-    if (saved === "dark") {
-      document.body.classList.add("dark-theme");
-    }
-
-    if (!toggle) return;
-
-    updateThemeButton(toggle);
-
-    toggle.addEventListener("click", function () {
-
-      document.body.classList.toggle(
-        "dark-theme"
-      );
-
-      const dark =
-        document.body.classList.contains(
-          "dark-theme"
-        );
-
-      try {
-
-        localStorage.setItem(
-          "novera-toolkit-theme",
-          dark ? "dark" : "light"
-        );
-
-      } catch {
-        /* Ignore storage failures */
-      }
-
-      updateThemeButton(toggle);
-
-    });
-  }
-
-
-  function updateThemeButton(button) {
+    const button = $("#themeToggle");
 
     if (!button) return;
 
-    const dark =
-      document.body.classList.contains(
-        "dark-theme"
-      );
+    const savedTheme =
+      localStorage.getItem("novera-toolkit-theme");
 
-    button.setAttribute(
-      "aria-label",
-      dark
-        ? "Switch to light mode"
-        : "Switch to dark mode"
-    );
-
-    const icon =
-      button.querySelector("span");
-
-    if (icon) {
-
-      icon.textContent =
-        dark ? "☀" : "◐";
-
-    }
-  }
-
-
-  /* ======================================================
-     HERO ACTIONS
-  ====================================================== */
-
-  function setupHeroActions() {
-
-    const start =
-      $("#startToolkit");
-
-    if (start) {
-
-      start.addEventListener(
-        "click",
-        function () {
-
-          activateTool("calculator");
-
-          scrollToWorkspace();
-
-          const input =
-            $("#calculatorInput") ||
-            $("#calcInput") ||
-            $(".calculator-input");
-
-          setTimeout(function () {
-
-            if (input) {
-              input.focus();
-            }
-
-          }, 500);
-
-        }
-      );
+    if (savedTheme === "light") {
+      document.documentElement.classList.add("light-theme");
+      document.body.classList.add("light-theme");
+    } else if (savedTheme === "dark") {
+      document.documentElement.classList.remove("light-theme");
+      document.body.classList.remove("light-theme");
     }
 
+    button.addEventListener("click", () => {
+      const light =
+        document.documentElement.classList.toggle("light-theme");
 
-    const showAll =
-      $("#showAllTools");
+      document.body.classList.toggle("light-theme", light);
 
-    if (showAll) {
-
-      showAll.addEventListener(
-        "click",
-        function () {
-
-          const selector =
-            $(".tool-selector-section");
-
-          if (!selector) return;
-
-          selector.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-          });
-
-        }
-      );
-    }
-
-
-    const clearWorkspace =
-      $("#clearWorkspace");
-
-    if (clearWorkspace) {
-
-      clearWorkspace.addEventListener(
-        "click",
-        clearActiveWorkspace
+      localStorage.setItem(
+        "novera-toolkit-theme",
+        light ? "light" : "dark"
       );
 
-    }
-  }
-
-
-  function scrollToWorkspace() {
-
-    const workspace =
-      $(".workspace-section");
-
-    if (!workspace) return;
-
-    workspace.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
+      updateThemeIcon();
     });
   }
 
+  function updateThemeIcon() {
+    const icon = $("#themeIcon");
 
-  function clearActiveWorkspace() {
+    if (!icon) return;
 
-    const panel =
-      $(".tool-panel.active-panel");
+    const isLight =
+      document.documentElement.classList.contains("light-theme") ||
+      document.body.classList.contains("light-theme");
 
-    if (!panel) return;
-
-    $$(
-      "input, textarea",
-      panel
-    ).forEach(function (field) {
-
-      field.value = "";
-
-      clearError(field);
-
-    });
-
-
-    const answer =
-      $(".answer-card", panel);
-
-    if (answer) {
-
-      const value =
-        $(".answer-value", answer);
-
-      const unit =
-        $(".answer-unit", answer);
-
-      const formula =
-        $(".answer-formula", answer);
-
-      if (value) {
-        value.textContent = "—";
-      }
-
-      if (unit) {
-        unit.textContent = "";
-      }
-
-      if (formula) {
-        formula.textContent = "";
-      }
-
-      answer.classList.remove(
-        "has-result"
-      );
-    }
-
-
-    const graph =
-      $(".graph-display", panel);
-
-    if (graph) {
-
-      graph.innerHTML = `
-        <div class="graph-empty-state">
-          <div class="graph-empty-icon">∿</div>
-          <p>Enter a function to generate a graph.</p>
-        </div>
-      `;
-
-    }
+    icon.textContent = isLight ? "☾" : "☼";
   }
-
 
   /* ======================================================
      TOOL CARDS
   ====================================================== */
 
   function setupToolCards() {
-
-    const cards =
-      $$(".tool-card");
-
-    cards.forEach(function (card) {
-
+    $$(".tool-card").forEach(card => {
       const tool =
         card.dataset.tool ||
         card.getAttribute("data-tool");
 
-      if (!tool) return;
+      if (!TOOL_NAMES.includes(tool)) return;
 
-      card.addEventListener("click", function () {
+      card.addEventListener("click", event => {
+        event.preventDefault();
         activateTool(tool);
       });
 
       card.setAttribute("role", "button");
       card.setAttribute("tabindex", "0");
 
-      card.addEventListener(
-        "keydown",
-        function (event) {
-
-          if (
-            event.key === "Enter" ||
-            event.key === " "
-          ) {
-
-            event.preventDefault();
-
-            activateTool(tool);
-          }
-
+      card.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activateTool(tool);
         }
-      );
-
+      });
     });
   }
 
-
-  /* ======================================================
-     TOOL ACTIVATION
-  ====================================================== */
-
   function activateTool(tool) {
-
-    const validTools = [
-      "calculator",
-      "algebra",
-      "graph",
-      "physics",
-      "chemistry",
-      "statistics"
-    ];
-
-    if (!validTools.includes(tool)) {
-      return;
+    if (!TOOL_NAMES.includes(tool)) {
+      tool = "calculator";
     }
 
     state.activeTool = tool;
 
+    $$(".tool-card").forEach(card => {
+      const cardTool =
+        card.dataset.tool ||
+        card.getAttribute("data-tool");
 
-    $$(".tool-card").forEach(
-      function (card) {
+      card.classList.toggle(
+        "active",
+        cardTool === tool
+      );
+    });
 
-        card.classList.toggle(
-          "active",
-          card.dataset.tool === tool
-        );
+    $$(".tool-panel").forEach(panel => {
+      const panelTool =
+        panel.dataset.tool ||
+        panel.dataset.panel ||
+        panel.id?.replace(/^panel-/, "");
 
-      }
-    );
-
-
-    $$(".tool-panel").forEach(
-      function (panel) {
-
-        const panelTool =
-          panel.dataset.tool ||
-          panel.dataset.panel ||
-          panel.id?.replace(
-            "panel-",
-            ""
-          );
-
-        panel.classList.toggle(
-          "active-panel",
-          panelTool === tool
-        );
-
-      }
-    );
-
-
-    if (
-      window.innerWidth < 800
-    ) {
-
-      setTimeout(
-        scrollToWorkspace,
-        80
+      panel.classList.toggle(
+        "active-panel",
+        panelTool === tool
       );
 
-    }
-  }
+      panel.classList.toggle(
+        "active",
+        panelTool === tool
+      );
+    });
 
+    const workspace = $(".workspace-section");
+
+    if (workspace && window.innerWidth < 900) {
+      workspace.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+
+    saveState();
+  }
 
   /* ======================================================
      PANELS
   ====================================================== */
 
   function setupPanels() {
+    // Compatibility layer.
+    // Handles both data-tool and data-panel HTML.
+    $$(".tool-panel").forEach(panel => {
+      if (!panel.dataset.tool) {
+        const detected =
+          panel.dataset.panel ||
+          panel.id?.replace(/^panel-/, "");
 
-    $$("[data-tool-target]").forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            activateTool(
-              button.dataset.toolTarget
-            );
-
-          }
-        );
-
+        if (detected) {
+          panel.dataset.tool = detected;
+        }
       }
-    );
-
-
-    $$("[data-scroll-tool]").forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            activateTool(
-              button.dataset.scrollTool
-            );
-
-          }
-        );
-
-      }
-    );
+    });
   }
 
+  /* ======================================================
+     HERO BUTTONS
+  ====================================================== */
+
+  function setupHeroButtons() {
+    const start = $("#startToolkit");
+    const all = $("#showAllTools");
+
+    if (start) {
+      start.addEventListener("click", event => {
+        event.preventDefault();
+
+        activateTool("calculator");
+
+        const workspace =
+          $(".workspace-section") ||
+          $(".tool-workspace");
+
+        if (workspace) {
+          workspace.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+          });
+        }
+      });
+    }
+
+    if (all) {
+      all.addEventListener("click", event => {
+        event.preventDefault();
+
+        const tools =
+          $(".tool-selector") ||
+          $(".tools-grid") ||
+          $(".tool-cards");
+
+        if (tools) {
+          tools.scrollIntoView({
+            behavior: "smooth",
+            block: "center"
+          });
+        }
+      });
+    }
+  }
 
   /* ======================================================
      CALCULATOR
   ====================================================== */
 
   function setupCalculator() {
-
-    const input =
-      $("#calculatorInput") ||
-      $("#calcInput") ||
-      $(".calculator-input");
-
-    if (!input) return;
-
+    const input = $("#calculatorInput");
 
     const calculateButton =
       $("#calculateBasic") ||
@@ -548,2739 +406,2535 @@
       $("#calculatorCalculate") ||
       $('[data-action="calculate-calculator"]');
 
-
-    const chips =
-      $$(".quick-chips button");
-
-
-    chips.forEach(
-      function (chip) {
-
-        chip.addEventListener(
-          "click",
-          function () {
-
-            const value =
-              chip.dataset.value ||
-              chip.dataset.expression ||
-              chip.textContent.trim();
-
-            if (!value) return;
-
-            input.value = value;
-
-            clearError(input);
-
-            input.focus();
-
-          }
-        );
-
-      }
-    );
-
-
-    $$(".calculator-modes button")
-      .forEach(
-        function (button) {
-
-          button.addEventListener(
-            "click",
-            function () {
-
-              $$(".calculator-modes button")
-                .forEach(
-                  b =>
-                    b.classList.remove(
-                      "active"
-                    )
-                );
-
-              button.classList.add(
-                "active"
-              );
-
-
-              state.calculatorMode =
-                button.dataset.mode ||
-                button.dataset.calculatorMode ||
-                "basic";
-
-            }
-          );
-
-        }
-      );
-
-
-    if (calculateButton) {
-
-      calculateButton.addEventListener(
-        "click",
-        calculateCalculator
-      );
-
+    if (input && calculateButton) {
+      calculateButton.addEventListener("click", calculateCalculator);
     }
 
-
-    input.addEventListener(
-      "keydown",
-      function (event) {
-
-        if (
-          event.key === "Enter" &&
-          !event.shiftKey
-        ) {
-
+    if (input) {
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
           event.preventDefault();
-
           calculateCalculator();
-
         }
+      });
+    }
 
+    $$("[data-calculator-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        const mode =
+          button.dataset.calculatorMode;
+
+        if (!mode) return;
+
+        state.calculatorMode = mode;
+
+        $$("[data-calculator-mode]").forEach(item => {
+          item.classList.toggle(
+            "active",
+            item === button
+          );
+        });
+
+        saveState();
+      });
+    });
+
+    // Compatibility with older HTML.
+    $$("[data-mode]").forEach(button => {
+      if (
+        button.closest("#panel-calculator") &&
+        button.dataset.mode
+      ) {
+        button.addEventListener("click", () => {
+          state.calculatorMode = button.dataset.mode;
+          saveState();
+        });
       }
+    });
+
+    $$(".quick-chip, [data-expression]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const value =
+          chip.dataset.expression ||
+          chip.dataset.value ||
+          chip.textContent.trim();
+
+        if (!input) return;
+
+        input.value = value;
+        input.focus();
+      });
+    });
+
+    const memoryButtons = $$(
+      "[data-calculator-memory], [data-memory]"
     );
+
+    memoryButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        const action =
+          button.dataset.calculatorMemory ||
+          button.dataset.memory;
+
+        handleMemory(action);
+      });
+    });
   }
 
-
   function calculateCalculator() {
-
-    const input =
-      $("#calculatorInput") ||
-      $("#calcInput") ||
-      $(".calculator-input");
+    const input = $("#calculatorInput");
 
     if (!input) return;
 
-
-    const expression =
-      input.value.trim();
-
+    const expression = input.value.trim();
 
     if (!expression) {
-
-      showError(
-        input,
-        "Enter something to calculate."
-      );
-
+      showError(input, "Enter a calculation first.");
       return;
     }
 
-
     try {
-
       let result;
 
-      const calc =
-        window.NOVERA_CALCULATOR;
+      const calc = engines.calculator();
 
-
-      if (!calc) {
-
-        throw new Error(
-          "Calculator engine unavailable."
+      if (calc) {
+        result = tryCalculatorEngine(
+          calc,
+          expression,
+          state.calculatorMode
         );
-
       }
-
 
       if (
-        typeof calc.evaluate ===
-        "function"
+        result === undefined ||
+        result === null ||
+        (typeof result === "number" && !Number.isFinite(result))
       ) {
-
-        result =
-          calc.evaluate(expression);
-
+        result = calculateExpression(expression);
       }
 
-      else if (
-        typeof calc.calculate ===
-        "function"
-      ) {
-
-        result =
-          calc.calculate(expression);
-
-      }
-
-      else if (
-        typeof calc.expression ===
-        "function"
-      ) {
-
-        result =
-          calc.expression(expression);
-
-      }
-
-      else {
-
-        result =
-          safeExpression(expression);
-
-      }
-
-
-      if (
-        result &&
-        typeof result === "object" &&
-        "value" in result
-      ) {
-
-        result =
-          result.value;
-
-      }
-
-
-      displayAnswer(
-        "calculator",
+      renderAnswer(
+        findAnswerContainer("calculator"),
         result,
-        ""
+        "Result"
       );
 
-
       addHistory(
+        "Calculator",
         expression,
         result
       );
-
-
-      clearError(input);
-
-    } catch {
-
+    } catch (error) {
       showError(
         input,
-        "I couldn't read that expression."
+        error.message || "Unable to calculate this expression."
       );
-
     }
   }
 
+  function tryCalculatorEngine(calc, expression, mode) {
+    const candidates = [
+      ["calculate", [expression, mode]],
+      ["evaluate", [expression]],
+      ["basic", [expression]],
+      ["solve", [expression]],
+      ["calculateExpression", [expression]]
+    ];
+
+    for (const [method, args] of candidates) {
+      if (typeof calc[method] === "function") {
+        try {
+          const result = calc[method](...args);
+
+          if (result !== undefined) {
+            return result;
+          }
+        } catch (_) {
+          // Continue to local fallback.
+        }
+      }
+    }
+
+    return undefined;
+  }
 
   /* ======================================================
-     SAFE FALLBACK CALCULATOR
+     SAFE CALCULATOR
   ====================================================== */
 
-  function safeExpression(expression) {
+  function calculateExpression(expression) {
+    let expr = expression
+      .replace(/π/g, "Math.PI")
+      .replace(/pi/gi, "Math.PI")
+      .replace(/\^/g, "**")
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/");
 
-    let clean =
-      String(expression)
-        .replace(/×/g, "*")
-        .replace(/÷/g, "/")
-        .replace(/π/g, "Math.PI")
-        .replace(/\^/g, "**");
+    // Percentage:
+    // 50% → 0.5
+    expr = expr.replace(
+      /(\d+(?:\.\d+)?)%/g,
+      "($1/100)"
+    );
 
-
-    const validation =
-      clean.replace(
-        /Math\.PI/g,
-        ""
-      );
-
-
+    // Allow only safe mathematical syntax.
     if (
-      !/^[0-9+\-*/().\s%]*$/
-        .test(validation)
+      !/^[0-9+\-*/%().,\sA-Za-z_]+$/.test(expr)
     ) {
-
-      throw new Error(
-        "Invalid expression"
-      );
-
+      throw new Error("Unsupported characters.");
     }
 
+    const allowedNames = [
+      "Math.PI",
+      "Math.E"
+    ];
 
-    clean =
-      clean.replace(
-        /(\d+(?:\.\d+)?)%/g,
-        "($1/100)"
-      );
+    let test = expr;
 
+    allowedNames.forEach(name => {
+      test = test.replaceAll(name, "");
+    });
 
-    const value =
-      Function(
-        '"use strict"; return (' +
-        clean +
-        ")"
+    if (/[A-Za-z_$]/.test(test)) {
+      throw new Error("Unknown mathematical function.");
+    }
+
+    try {
+      // The expression has already passed a strict character
+      // whitelist and contains no user-controlled identifiers.
+      const result = Function(
+        `"use strict"; return (${expr});`
       )();
 
+      if (!Number.isFinite(result)) {
+        throw new Error("The result is not a finite number.");
+      }
 
-    if (
-      typeof value !== "number" ||
-      !Number.isFinite(value)
-    ) {
-
-      throw new Error(
-        "Invalid result"
-      );
-
+      return cleanNumber(result);
+    } catch (_) {
+      throw new Error("Invalid mathematical expression.");
     }
-
-
-    return value;
   }
 
+  /* ======================================================
+     MEMORY
+  ====================================================== */
+
+  function handleMemory(action) {
+    const input = $("#calculatorInput");
+
+    if (!action) return;
+
+    if (action === "clear" || action === "mc") {
+      state.memory = 0;
+    }
+
+    if (action === "recall" || action === "mr") {
+      if (input) {
+        input.value = formatNumber(state.memory);
+      }
+    }
+
+    if (action === "add" || action === "m+") {
+      const value = input
+        ? calculateExpression(input.value)
+        : 0;
+
+      state.memory += Number(value) || 0;
+    }
+
+    if (action === "subtract" || action === "m-") {
+      const value = input
+        ? calculateExpression(input.value)
+        : 0;
+
+      state.memory -= Number(value) || 0;
+    }
+
+    localStorage.setItem(
+      MEMORY_KEY,
+      String(state.memory)
+    );
+  }
 
   /* ======================================================
      ALGEBRA
   ====================================================== */
 
   function setupAlgebra() {
+    $$("[data-algebra-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        state.algebraMode =
+          button.dataset.algebraMode;
 
-    const buttons =
-      $$(".algebra-mode-selector button");
+        $$("[data-algebra-mode]").forEach(item => {
+          item.classList.toggle(
+            "active",
+            item === button
+          );
+        });
 
+        saveState();
+      });
+    });
 
-    buttons.forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            buttons.forEach(
-              b =>
-                b.classList.remove(
-                  "active"
-                )
-            );
-
-
-            button.classList.add(
-              "active"
-            );
-
-
-            state.algebraMode =
-              button.dataset.mode ||
-              button.dataset.algebraMode ||
-              "linear";
-
-
-            updateAlgebraInterface();
-
-          }
-        );
-
-      }
-    );
-
-
-    const solveButton =
+    const solve =
       $("#solveAlgebra") ||
       $("#algebraSolve") ||
       $('[data-action="solve-algebra"]');
 
-
-    if (solveButton) {
-
-      solveButton.addEventListener(
-        "click",
-        solveAlgebra
-      );
-
+    if (solve) {
+      solve.addEventListener("click", solveAlgebra);
     }
 
-
-    const input =
-      $("#algebraInput") ||
-      $("#equationInput") ||
-      $(".algebra-input");
-
+    const input = $("#algebraInput");
 
     if (input) {
-
-      input.addEventListener(
-        "keydown",
-        function (event) {
-
-          if (
-            event.key === "Enter"
-          ) {
-
-            event.preventDefault();
-
-            solveAlgebra();
-
-          }
-
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          solveAlgebra();
         }
-      );
-
+      });
     }
-
-
-    updateAlgebraInterface();
   }
-
-
-  function updateAlgebraInterface() {
-
-    const input =
-      $("#algebraInput") ||
-      $("#equationInput") ||
-      $(".algebra-input");
-
-    if (!input) return;
-
-
-    const placeholders = {
-
-      linear:
-        "Example: 2x + 5 = 17",
-
-      quadratic:
-        "Example: x² - 5x + 6 = 0",
-
-      simultaneous:
-        "Example: 2x + y = 7 ; x - y = 1",
-
-      ratio:
-        "Example: 2:3 = x:12"
-
-    };
-
-
-    input.placeholder =
-      placeholders[state.algebraMode] ||
-      placeholders.linear;
-  }
-
 
   function solveAlgebra() {
-
-    const input =
-      $("#algebraInput") ||
-      $("#equationInput") ||
-      $(".algebra-input");
-
+    const input = $("#algebraInput");
 
     if (!input) return;
 
+    const value = input.value.trim();
 
-    const equation =
-      input.value.trim();
-
-
-    if (!equation) {
-
-      showError(
-        input,
-        "Enter an equation first."
-      );
-
+    if (!value) {
+      showError(input, "Enter an equation or expression.");
       return;
     }
-
-
-    const algebra =
-      window.NOVERA_ALGEBRA;
-
-
-    if (!algebra) {
-
-      showError(
-        input,
-        "Algebra engine unavailable."
-      );
-
-      return;
-    }
-
 
     try {
-
       let result;
 
+      const algebra = engines.algebra();
 
-      switch (
-        state.algebraMode
-      ) {
-
-        case "quadratic":
-
-          result =
-            callFirst(
-              algebra,
-              [
-                "quadratic",
-                "solveQuadratic",
-                "quadraticEquation"
-              ],
-              equation
-            );
-
-          break;
-
-
-        case "simultaneous":
-
-          result =
-            callFirst(
-              algebra,
-              [
-                "simultaneous",
-                "solveSimultaneous",
-                "simultaneousEquations"
-              ],
-              equation
-            );
-
-          break;
-
-
-        case "ratio":
-
-          result =
-            callFirst(
-              algebra,
-              [
-                "ratio",
-                "solveRatio",
-                "proportion"
-              ],
-              equation
-            );
-
-          break;
-
-
-        default:
-
-          result =
-            callFirst(
-              algebra,
-              [
-                "linear",
-                "solveLinear",
-                "linearEquation"
-              ],
-              equation
-            );
-
-      }
-
-
-      if (
-        result === undefined
-      ) {
-
-        result =
-          callFirst(
-            algebra,
-            [
-              "solve",
-              "evaluate"
-            ],
-            equation
-          );
-
-      }
-
-
-      if (
-        result === undefined
-      ) {
-
-        throw new Error(
-          "No compatible algebra method."
+      if (algebra) {
+        result = tryAlgebraEngine(
+          algebra,
+          value,
+          state.algebraMode
         );
-
       }
 
+      if (result === undefined) {
+        result = localAlgebraSolver(
+          value,
+          state.algebraMode
+        );
+      }
 
-      displaySmartAnswer(
-        "algebra",
-        result
+      renderSmartAnswer(
+        findAnswerContainer("algebra"),
+        result,
+        "Solution"
       );
-
 
       addHistory(
-        equation,
+        "Algebra",
+        value,
         result
       );
-
-
-      clearError(input);
-
-    } catch {
-
+    } catch (error) {
       showError(
         input,
-        "Check the equation format and try again."
+        error.message || "Unable to solve this."
       );
-
     }
   }
 
+  function tryAlgebraEngine(algebra, input, mode) {
+    const methods = [
+      ["solve", [input, mode]],
+      ["solveEquation", [input]],
+      ["linearEquation", [input]],
+      ["quadraticEquation", [input]],
+      ["simultaneous", [input]],
+      ["ratio", [input]]
+    ];
+
+    for (const [method, args] of methods) {
+      if (typeof algebra[method] === "function") {
+        try {
+          const result = algebra[method](...args);
+
+          if (result !== undefined) {
+            return result;
+          }
+        } catch (_) {}
+      }
+    }
+
+    return undefined;
+  }
+
+  function localAlgebraSolver(input, mode) {
+    const clean = input
+      .replace(/[−–—]/g, "-")
+      .replace(/\s+/g, "");
+
+    if (mode === "quadratic") {
+      return solveQuadratic(clean);
+    }
+
+    if (mode === "simultaneous") {
+      return solveSimultaneous(clean);
+    }
+
+    if (mode === "ratio") {
+      return solveRatio(clean);
+    }
+
+    if (
+      mode === "linear" ||
+      clean.includes("=")
+    ) {
+      return solveLinear(clean);
+    }
+
+    return {
+      expression: clean,
+      value: calculateExpression(clean)
+    };
+  }
+
+  function solveLinear(equation) {
+    const parts = equation.split("=");
+
+    if (parts.length !== 2) {
+      throw new Error(
+        "Use an equation such as 2x + 4 = 10."
+      );
+    }
+
+    const left = parts[0];
+    const right = parts[1];
+
+    const a = coefficientOfX(left) -
+              coefficientOfX(right);
+
+    const b = constantOfExpression(left) -
+              constantOfExpression(right);
+
+    if (Math.abs(a) < 1e-12) {
+      if (Math.abs(b) < 1e-12) {
+        return { result: "Infinitely many solutions." };
+      }
+
+      return { result: "No solution." };
+    }
+
+    return {
+      variable: "x",
+      value: cleanNumber(-b / a),
+      equation
+    };
+  }
+
+  function coefficientOfX(expr) {
+    const normalized = expr
+      .replace(/\*/g, "")
+      .replace(/-/g, "+-");
+
+    let coefficient = 0;
+
+    normalized
+      .split("+")
+      .forEach(term => {
+        if (term.includes("x")) {
+          const c = term.replace("x", "");
+
+          if (c === "" || c === "+") {
+            coefficient += 1;
+          } else if (c === "-") {
+            coefficient -= 1;
+          } else {
+            coefficient += Number(c);
+          }
+        }
+      });
+
+    return coefficient;
+  }
+
+  function constantOfExpression(expr) {
+    const withoutX = expr
+      .replace(/-?[\d.]*x/g, "")
+      .replace(/\*/g, "");
+
+    if (!withoutX) return 0;
+
+    try {
+      return Number(
+        calculateExpression(withoutX)
+      );
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function solveQuadratic(equation) {
+    const parts = equation.split("=");
+
+    if (parts.length !== 2) {
+      throw new Error(
+        "Use an equation such as x² + 5x + 6 = 0."
+      );
+    }
+
+    let expr =
+      parts[0] +
+      "-(" +
+      parts[1] +
+      ")";
+
+    expr = expr
+      .replace(/x²/g, "x^2")
+      .replace(/\*\*/g, "^");
+
+    const a = coefficientOfPower(expr, 2);
+    const b = coefficientOfPower(expr, 1);
+    const c = constantOfExpression(
+      expr.replace(
+        /[-+]?(?:[\d.]+|\d+\/\d+)\*?x(?:\^2)?/g,
+        ""
+      )
+    );
+
+    if (Math.abs(a) < 1e-12) {
+      return solveLinear(equation);
+    }
+
+    const discriminant =
+      b * b - 4 * a * c;
+
+    if (discriminant < 0) {
+      return {
+        discriminant: cleanNumber(discriminant),
+        result: "No real roots.",
+        complex: true
+      };
+    }
+
+    const root1 =
+      (-b + Math.sqrt(discriminant)) /
+      (2 * a);
+
+    const root2 =
+      (-b - Math.sqrt(discriminant)) /
+      (2 * a);
+
+    return {
+      a: cleanNumber(a),
+      b: cleanNumber(b),
+      c: cleanNumber(c),
+      discriminant: cleanNumber(discriminant),
+      roots: [
+        cleanNumber(root1),
+        cleanNumber(root2)
+      ]
+    };
+  }
+
+  function coefficientOfPower(expr, power) {
+    const regex =
+      new RegExp(
+        `([+-]?(?:\\\\d+(?:\\\\.\\\\d+)?))?\\\\*?x(?:\\\\^${power})`
+      );
+
+    const match = expr.match(regex);
+
+    if (!match) {
+      if (power === 1) {
+        return coefficientOfX(expr);
+      }
+
+      return 0;
+    }
+
+    const c = match[1];
+
+    if (!c || c === "+") return 1;
+    if (c === "-") return -1;
+
+    return Number(c);
+  }
+
+  function solveSimultaneous(input) {
+    const equations = input
+      .split(/[;\n]+/)
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    if (equations.length !== 2) {
+      throw new Error(
+        "Enter two equations separated by a semicolon."
+      );
+    }
+
+    const p1 = equations[0].split("=");
+    const p2 = equations[1].split("=");
+
+    if (p1.length !== 2 || p2.length !== 2) {
+      throw new Error("Both equations need = signs.");
+    }
+
+    const e1 =
+      p1[0] +
+      "-(" +
+      p1[1] +
+      ")";
+
+    const e2 =
+      p2[0] +
+      "-(" +
+      p2[1] +
+      ")";
+
+    const a1 = coefficientOfVariable(e1, "x");
+    const b1 = coefficientOfVariable(e1, "y");
+    const c1 = -constantOfExpression(e1);
+
+    const a2 = coefficientOfVariable(e2, "x");
+    const b2 = coefficientOfVariable(e2, "y");
+    const c2 = -constantOfExpression(e2);
+
+    const determinant =
+      a1 * b2 - a2 * b1;
+
+    if (Math.abs(determinant) < 1e-12) {
+      throw new Error(
+        "The equations do not have one unique solution."
+      );
+    }
+
+    const x =
+      (c1 * b2 - c2 * b1) /
+      determinant;
+
+    const y =
+      (a1 * c2 - a2 * c1) /
+      determinant;
+
+    return {
+      x: cleanNumber(x),
+      y: cleanNumber(y)
+    };
+  }
+
+  function coefficientOfVariable(expr, variable) {
+    const cleaned = expr
+      .replace(/\*/g, "")
+      .replace(/-/g, "+-");
+
+    let result = 0;
+
+    cleaned.split("+").forEach(term => {
+      if (!term.includes(variable)) return;
+
+      const coefficient =
+        term.replace(variable, "");
+
+      if (coefficient === "") {
+        result += 1;
+      } else if (coefficient === "-") {
+        result -= 1;
+      } else {
+        result += Number(coefficient);
+      }
+    });
+
+    return result;
+  }
+
+  function solveRatio(input) {
+    const parts = input.split(":");
+
+    if (parts.length !== 2) {
+      throw new Error(
+        "Use a ratio such as 2:3 = x:12."
+      );
+    }
+
+    const left = parts[0].split("=");
+
+    if (left.length === 2) {
+      const a = Number(left[0]);
+      const b = Number(parts[1]);
+      const c = Number(left[1]);
+
+      if (
+        Number.isFinite(a) &&
+        Number.isFinite(b) &&
+        Number.isFinite(c) &&
+        a !== 0
+      ) {
+        return {
+          x: cleanNumber((b * c) / a)
+        };
+      }
+    }
+
+    throw new Error("Could not understand the ratio.");
+  }
 
   /* ======================================================
      GRAPH
   ====================================================== */
 
   function setupGraph() {
+    $$("[data-graph-type]").forEach(button => {
+      button.addEventListener("click", () => {
+        state.graphMode =
+          button.dataset.graphType;
 
-    const buttons =
-      $$(".graph-options button");
+        $$("[data-graph-type]").forEach(item => {
+          item.classList.toggle(
+            "active",
+            item === button
+          );
+        });
 
+        saveState();
+      });
+    });
 
-    buttons.forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            buttons.forEach(
-              b =>
-                b.classList.remove(
-                  "active"
-                )
-            );
-
-
-            button.classList.add(
-              "active"
-            );
-
-
-            state.graphMode =
-              button.dataset.mode ||
-              button.dataset.graphType ||
-              "auto";
-
-          }
-        );
-
-      }
-    );
-
-
-    const plotButton =
+    const plot =
       $("#plotGraph") ||
-      $("#graphPlot") ||
+      $("#generateGraph") ||
       $('[data-action="plot-graph"]');
 
-
-    if (plotButton) {
-
-      plotButton.addEventListener(
-        "click",
-        plotGraph
-      );
-
+    if (plot) {
+      plot.addEventListener("click", plotGraph);
     }
 
-
-    const input =
-      $("#graphInput") ||
-      $("#functionInput") ||
-      $(".graph-input");
-
+    const input = $("#graphInput");
 
     if (input) {
-
-      input.addEventListener(
-        "keydown",
-        function (event) {
-
-          if (
-            event.key === "Enter"
-          ) {
-
-            event.preventDefault();
-
-            plotGraph();
-
-          }
-
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          plotGraph();
         }
-      );
-
+      });
     }
   }
-
 
   function plotGraph() {
+    const input = $("#graphInput");
 
-    const input =
-      $("#graphInput") ||
-      $("#functionInput") ||
-      $(".graph-input");
+    if (!input) return;
 
-
-    const display =
-      $("#graphDisplay") ||
-      $(".graph-display");
-
-
-    if (!input || !display) {
-      return;
-    }
-
-
-    const expression =
-      input.value.trim();
-
+    const expression = input.value.trim();
 
     if (!expression) {
-
       showError(
         input,
-        "Enter a function first."
+        "Enter a function such as y = 2x + 1."
       );
-
       return;
     }
-
-
-    const graph =
-      window.NOVERA_GRAPH;
-
-
-    if (!graph) {
-
-      showError(
-        input,
-        "Graph engine unavailable."
-      );
-
-      return;
-    }
-
 
     try {
-
       let result;
 
+      const graph = engines.graph();
 
-      result =
-        callFirst(
+      if (graph) {
+        result = tryGraphEngine(
           graph,
-          [
-            "plot",
-            "graph",
-            "generate",
-            "generatePoints"
-          ],
-          expression
+          expression,
+          state.graphMode
         );
-
-
-      if (
-        result === undefined
-      ) {
-
-        result =
-          graph.linear
-            ? graph.linear(
-                expression
-              )
-            : undefined;
-
       }
 
-
-      if (
-        result === undefined
-      ) {
-
-        throw new Error(
-          "No graph method available."
+      if (result === undefined) {
+        result = localGraph(
+          expression,
+          state.graphMode
         );
-
       }
 
+      renderGraph(result);
 
-      renderGraphResult(
-        display,
-        result,
-        expression
+      addHistory(
+        "Graph",
+        expression,
+        "Graph generated"
       );
-
-
-      clearError(input);
-
-    } catch {
-
+    } catch (error) {
       showError(
         input,
-        "That function couldn't be plotted."
+        error.message || "Unable to generate graph."
       );
-
     }
   }
 
+  function tryGraphEngine(graph, expression, mode) {
+    const methods = [
+      ["plot", [expression, mode]],
+      ["graph", [expression, mode]],
+      ["generate", [expression, mode]],
+      ["generatePoints", [expression, mode]],
+      ["linear", [expression]],
+      ["quadratic", [expression]],
+      ["trig", [expression]]
+    ];
 
-  function renderGraphResult(
-    container,
-    result,
-    expression
-  ) {
+    for (const [method, args] of methods) {
+      if (typeof graph[method] === "function") {
+        try {
+          const result = graph[method](...args);
 
-    if (
-      typeof result === "string" &&
-      (
-        result.includes("<svg") ||
-        result.includes("<canvas") ||
-        result.includes("<div")
-      )
-    ) {
-
-      container.innerHTML =
-        result;
-
-      return;
+          if (result !== undefined) {
+            return result;
+          }
+        } catch (_) {}
+      }
     }
 
+    return undefined;
+  }
 
-    let points = [];
+  function localGraph(expression, mode) {
+    const canvas =
+      $("#graphCanvas") ||
+      $(".graph-canvas");
 
-
-    if (
-      Array.isArray(result)
-    ) {
-
-      points = result;
-
+    if (!canvas) {
+      return {
+        expression,
+        message: "Graph generated."
+      };
     }
 
-    else if (
-      result &&
-      Array.isArray(
-        result.points
-      )
-    ) {
-
-      points =
-        result.points;
-
-    }
-
-
-    points =
-      points.filter(
-        function (point) {
-
-          return (
-            Array.isArray(point) &&
-            point.length >= 2 &&
-            Number.isFinite(
-              Number(point[0])
-            ) &&
-            Number.isFinite(
-              Number(point[1])
-            )
-          );
-
-        }
-      );
-
-
-    if (!points.length) {
-
-      container.innerHTML = `
-        <div class="graph-empty-state">
-          <div class="graph-empty-icon">∿</div>
-          <p>
-            Graph generated for
-            <strong>
-              ${escapeHTML(expression)}
-            </strong>
-          </p>
-        </div>
-      `;
-
-      return;
-    }
-
-
-    drawSimpleGraph(
-      container,
-      points,
+    const fn = compileGraphFunction(
       expression
     );
+
+    const points = [];
+
+    for (let x = -10; x <= 10; x += 0.1) {
+      try {
+        const y = fn(x);
+
+        if (Number.isFinite(y)) {
+          points.push({
+            x,
+            y
+          });
+        }
+      } catch (_) {}
+    }
+
+    return {
+      expression,
+      points
+    };
   }
 
+  function compileGraphFunction(expression) {
+    let expr = expression
+      .toLowerCase()
+      .replace(/y\s*=/, "")
+      .replace(/\^/g, "**")
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
+      .replace(/π/g, "Math.PI");
 
-  function drawSimpleGraph(
-    container,
-    points,
-    expression
-  ) {
+    expr = expr.replace(
+      /\bsin\b/g,
+      "Math.sin"
+    );
+
+    expr = expr.replace(
+      /\bcos\b/g,
+      "Math.cos"
+    );
+
+    expr = expr.replace(
+      /\btan\b/g,
+      "Math.tan"
+    );
+
+    expr = expr.replace(
+      /\bsqrt\b/g,
+      "Math.sqrt"
+    );
+
+    expr = expr.replace(
+      /\blog\b/g,
+      "Math.log10"
+    );
+
+    expr = expr.replace(
+      /\bln\b/g,
+      "Math.log"
+    );
+
+    expr = expr.replace(
+      /(?<![A-Za-z])e(?![A-Za-z])/g,
+      "Math.E"
+    );
+
+    if (!/^[0-9x+\-*/().,\sA-Za-z_*]+$/.test(expr)) {
+      throw new Error("Unsupported graph expression.");
+    }
+
+    const unknown =
+      expr
+        .replaceAll("Math.sin", "")
+        .replaceAll("Math.cos", "")
+        .replaceAll("Math.tan", "")
+        .replaceAll("Math.sqrt", "")
+        .replaceAll("Math.log10", "")
+        .replaceAll("Math.log", "")
+        .replaceAll("Math.PI", "")
+        .replaceAll("Math.E", "")
+        .replaceAll("x", "");
+
+    if (/[A-Za-z_]/.test(unknown)) {
+      throw new Error("Unknown graph function.");
+    }
+
+    return function(x) {
+      return Function(
+        "x",
+        `"use strict"; return (${expr});`
+      )(x);
+    };
+  }
+
+  /* ======================================================
+     GRAPH RENDERING
+  ====================================================== */
+
+  function renderGraph(result) {
+    const container =
+      $("#graphOutput") ||
+      $("#graphResult") ||
+      $(".graph-output") ||
+      $(".graph-result");
+
+    const canvas =
+      $("#graphCanvas") ||
+      $(".graph-canvas");
+
+    if (canvas && canvas.tagName === "CANVAS") {
+      drawGraphCanvas(canvas, result);
+    }
+
+    if (container) {
+      const expression =
+        result?.expression || "";
+
+      const points =
+        normalizePoints(result?.points);
+
+      container.innerHTML = `
+        <div class="answer-card">
+          <div class="answer-label">GRAPH</div>
+          <div class="answer-value">
+            ${escapeHTML(expression || "Graph generated")}
+          </div>
+          ${
+            points.length
+              ? `<div class="answer-meta">${points.length} plotted points</div>`
+              : ""
+          }
+        </div>
+      `;
+    }
+  }
+
+  function normalizePoints(points) {
+    if (!Array.isArray(points)) return [];
+
+    return points
+      .map(point => {
+        if (Array.isArray(point)) {
+          return {
+            x: Number(point[0]),
+            y: Number(point[1])
+          };
+        }
+
+        if (
+          point &&
+          Number.isFinite(Number(point.x)) &&
+          Number.isFinite(Number(point.y))
+        ) {
+          return {
+            x: Number(point.x),
+            y: Number(point.y)
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  function drawGraphCanvas(canvas, result) {
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) return;
 
     const width =
-      Math.max(
-        300,
-        container.clientWidth || 600
-      );
-
+      canvas.clientWidth || 600;
 
     const height =
-      Math.max(
-        260,
-        container.clientHeight || 340
-      );
+      canvas.clientHeight || 360;
 
+    const ratio =
+      window.devicePixelRatio || 1;
 
-    const xs =
-      points.map(
-        p => Number(p[0])
-      );
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
 
+    ctx.setTransform(
+      ratio,
+      0,
+      0,
+      ratio,
+      0,
+      0
+    );
 
-    const ys =
-      points.map(
-        p => Number(p[1])
-      );
+    ctx.clearRect(
+      0,
+      0,
+      width,
+      height
+    );
 
+    const points =
+      normalizePoints(result?.points);
 
-    const minX =
-      Math.min(...xs);
+    if (!points.length) return;
 
-    const maxX =
-      Math.max(...xs);
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
 
-    const minY =
-      Math.min(...ys);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
 
-    const maxY =
-      Math.max(...ys);
-
-
-    const pad = 32;
-
+    const pad = 35;
 
     const scaleX =
       (width - pad * 2) /
       ((maxX - minX) || 1);
 
-
     const scaleY =
       (height - pad * 2) /
       ((maxY - minY) || 1);
 
-
-    function px(x) {
-
-      return (
+    const mapX =
+      x =>
         pad +
-        (x - minX) *
-        scaleX
-      );
+        (x - minX) * scaleX;
 
-    }
-
-
-    function py(y) {
-
-      return (
+    const mapY =
+      y =>
         height -
         pad -
-        (y - minY) *
-        scaleY
-      );
+        (y - minY) * scaleY;
 
-    }
+    ctx.beginPath();
 
+    points.forEach((point, index) => {
+      const x = mapX(point.x);
+      const y = mapY(point.y);
 
-    const path =
-      points
-        .map(
-          function (p, index) {
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
 
-            const x =
-              px(Number(p[0]));
-
-            const y =
-              py(Number(p[1]));
-
-
-            return (
-              index === 0
-                ? `M ${x} ${y}`
-                : `L ${x} ${y}`
-            );
-
-          }
-        )
-        .join(" ");
-
-
-    const zeroX =
-      minX <= 0 &&
-      maxX >= 0
-        ? px(0)
-        : null;
-
-
-    const zeroY =
-      minY <= 0 &&
-      maxY >= 0
-        ? py(0)
-        : null;
-
-
-    container.innerHTML = `
-      <svg
-        viewBox="0 0 ${width} ${height}"
-        width="100%"
-        height="100%"
-        preserveAspectRatio="none"
-        aria-label="Graph of ${escapeHTML(
-          expression
-        )}"
-      >
-
-        ${
-          zeroX !== null
-            ? `
-              <line
-                x1="${zeroX}"
-                y1="0"
-                x2="${zeroX}"
-                y2="${height}"
-                stroke="currentColor"
-                opacity=".18"
-              />
-            `
-            : ""
-        }
-
-        ${
-          zeroY !== null
-            ? `
-              <line
-                x1="0"
-                y1="${zeroY}"
-                x2="${width}"
-                y2="${zeroY}"
-                stroke="currentColor"
-                opacity=".18"
-              />
-            `
-            : ""
-        }
-
-        <path
-          d="${path}"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="3"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          opacity=".9"
-        />
-
-      </svg>
-
-      <div
-        style="
-          position:absolute;
-          left:15px;
-          top:12px;
-          font-size:10px;
-          font-weight:800;
-          opacity:.55;
-        "
-      >
-        ${escapeHTML(expression)}
-      </div>
-    `;
+    ctx.stroke();
   }
-
 
   /* ======================================================
      PHYSICS
   ====================================================== */
 
   function setupPhysics() {
+    $$("[data-physics-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        state.physicsMode =
+          button.dataset.physicsMode;
 
-    const buttons =
-      $$(".physics-selector button");
+        $$("[data-physics-mode]").forEach(item => {
+          item.classList.toggle(
+            "active",
+            item === button
+          );
+        });
 
+        renderPhysicsFields();
+        saveState();
+      });
+    });
 
-    buttons.forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            buttons.forEach(
-              b =>
-                b.classList.remove(
-                  "active"
-                )
-            );
-
-
-            button.classList.add(
-              "active"
-            );
-
-
-            state.physicsMode =
-              button.dataset.mode ||
-              button.dataset.physicsMode ||
-              "speed";
-
-
-            updatePhysicsFields();
-
-          }
-        );
-
-      }
-    );
-
-
-    const calculateButton =
+    const calculate =
       $("#calculatePhysics") ||
-      $("#physicsCalculate") ||
+      $("#solvePhysics") ||
       $('[data-action="calculate-physics"]');
 
-
-    if (calculateButton) {
-
-      calculateButton.addEventListener(
+    if (calculate) {
+      calculate.addEventListener(
         "click",
         calculatePhysics
       );
-
     }
 
-
-    updatePhysicsFields();
+    renderPhysicsFields();
   }
 
+  function renderPhysicsFields() {
+    const container =
+      $("#physicsFields");
 
-  function updatePhysicsFields() {
+    if (!container) return;
 
-    const fields =
-      $("#physicsFields") ||
-      $(".physics-fields");
-
-
-    if (!fields) return;
-
-
-    const configs = {
-
+    const definitions = {
       speed: [
-        [
-          "distance",
-          "Distance",
-          "e.g. 100",
-          "m"
-        ],
-        [
-          "time",
-          "Time",
-          "e.g. 5",
-          "s"
-        ]
+        ["distance", "Distance"],
+        ["time", "Time"]
       ],
-
 
       force: [
-        [
-          "mass",
-          "Mass",
-          "e.g. 10",
-          "kg"
-        ],
-        [
-          "acceleration",
-          "Acceleration",
-          "e.g. 9.8",
-          "m/s²"
-        ]
+        ["mass", "Mass"],
+        ["acceleration", "Acceleration"]
       ],
-
 
       energy: [
-        [
-          "mass",
-          "Mass",
-          "e.g. 5",
-          "kg"
-        ],
-        [
-          "velocity",
-          "Velocity",
-          "e.g. 10",
-          "m/s"
-        ]
+        ["mass", "Mass"],
+        ["velocity", "Velocity"]
       ],
-
 
       power: [
-        [
-          "energy",
-          "Energy",
-          "e.g. 500",
-          "J"
-        ],
-        [
-          "time",
-          "Time",
-          "e.g. 10",
-          "s"
-        ]
+        ["work", "Work"],
+        ["time", "Time"]
       ],
 
-
       electricity: [
-        [
-          "voltage",
-          "Voltage",
-          "e.g. 12",
-          "V"
-        ],
-        [
-          "resistance",
-          "Resistance",
-          "e.g. 6",
-          "Ω"
-        ]
+        ["voltage", "Voltage"],
+        ["resistance", "Resistance"]
       ]
-
     };
 
+    const fields =
+      definitions[state.physicsMode] ||
+      definitions.speed;
 
-    const config =
-      configs[state.physicsMode] ||
-      configs.speed;
-
-
-    fields.innerHTML =
-      config
-        .map(
-          function (item) {
-
-            return `
-              <div class="input-group">
-
-                <label
-                  for="physics-${item[0]}"
-                >
-                  ${item[1]}
-                </label>
-
-                <input
-                  id="physics-${item[0]}"
-                  class="main-input physics-field"
-                  data-field="${item[0]}"
-                  type="number"
-                  inputmode="decimal"
-                  placeholder="${item[2]}"
-                >
-
-                <span class="input-help">
-                  Unit: ${item[3]}
-                </span>
-
-              </div>
-            `;
-
-          }
-        )
-        .join("");
+    container.innerHTML = fields
+      .map(([name, label]) => `
+        <div class="input-group">
+          <label for="physics-${name}">
+            ${label}
+          </label>
+          <input
+            id="physics-${name}"
+            data-field="${name}"
+            type="number"
+            inputmode="decimal"
+            step="any"
+            placeholder="Enter ${label.toLowerCase()}"
+          >
+        </div>
+      `)
+      .join("");
   }
 
-
   function calculatePhysics() {
+    const container =
+      $("#physicsFields");
 
-    const fields =
-      $$(".physics-field");
-
-
-    if (!fields.length) return;
-
+    if (!container) return;
 
     const values = {};
 
+    $$("[data-field]", container).forEach(input => {
+      const raw = input.value.trim();
 
-    for (
-      const field of fields
-    ) {
-
-      if (
-        field.value.trim() === ""
-      ) {
-
-        showError(
-          field,
-          "Enter a value first."
+      if (raw === "") {
+        throwPhysicsError(
+          input,
+          "Enter a value."
         );
-
-        return;
       }
 
+      const n = number(raw);
 
-      values[field.dataset.field] =
-        Number(field.value);
+      if (!Number.isFinite(n)) {
+        throwPhysicsError(
+          input,
+          "Enter a valid number."
+        );
+      }
 
-    }
-
-
-    const engine =
-      window.NOVERA_PHYSICS;
-
-
-    if (!engine) {
-
-      showError(
-        fields[0],
-        "Physics engine unavailable."
-      );
-
-      return;
-    }
-
+      values[input.dataset.field] = n;
+    });
 
     try {
-
       let result;
 
+      const physics = engines.physics();
 
-      switch (
-        state.physicsMode
-      ) {
-
-        case "force":
-
-          result =
-            callFirst(
-              engine,
-              ["force"],
-              values.mass,
-              values.acceleration
-            );
-
-          break;
-
-
-        case "energy":
-
-          result =
-            callFirst(
-              engine,
-              [
-                "kineticEnergy",
-                "energy"
-              ],
-              values.mass,
-              values.velocity
-            );
-
-          break;
-
-
-        case "power":
-
-          result =
-            callFirst(
-              engine,
-              ["power"],
-              values.energy,
-              values.time
-            );
-
-          break;
-
-
-        case "electricity":
-
-          result =
-            callFirst(
-              engine,
-              ["current"],
-              values.voltage,
-              values.resistance
-            );
-
-          break;
-
-
-        default:
-
-          result =
-            callFirst(
-              engine,
-              ["speed"],
-              values.distance,
-              values.time
-            );
-
+      if (physics) {
+        result = tryPhysicsEngine(
+          physics,
+          state.physicsMode,
+          values
+        );
       }
 
-
-      if (
-        result === undefined
-      ) {
-
-        throw new Error();
-
+      if (result === undefined) {
+        result =
+          localPhysics(
+            state.physicsMode,
+            values
+          );
       }
 
-
-      displaySmartAnswer(
-        "physics",
-        result
+      renderSmartAnswer(
+        findAnswerContainer("physics"),
+        result,
+        "Physics Result"
       );
 
-
       addHistory(
+        "Physics",
         state.physicsMode,
         result
       );
-
-
-      fields.forEach(
-        clearError
-      );
-
-    } catch {
+    } catch (error) {
+      const first =
+        $("[data-field]", container);
 
       showError(
-        fields[0],
-        "Check the numbers and units."
+        first,
+        error.message ||
+          "Unable to calculate."
       );
-
     }
   }
 
+  function throwPhysicsError(input, message) {
+    throw new Error(message);
+  }
+
+  function tryPhysicsEngine(
+    physics,
+    mode,
+    values
+  ) {
+    const candidates = [];
+
+    if (mode === "speed") {
+      candidates.push(
+        ["speed", [values.distance, values.time]],
+        ["calculateSpeed", [values.distance, values.time]]
+      );
+    }
+
+    if (mode === "force") {
+      candidates.push(
+        ["force", [values.mass, values.acceleration]],
+        ["calculateForce", [values.mass, values.acceleration]]
+      );
+    }
+
+    if (mode === "energy") {
+      candidates.push(
+        ["kineticEnergy", [values.mass, values.velocity]],
+        ["energy", [values.mass, values.velocity]]
+      );
+    }
+
+    if (mode === "power") {
+      candidates.push(
+        ["power", [values.work, values.time]]
+      );
+    }
+
+    if (mode === "electricity") {
+      candidates.push(
+        ["current", [values.voltage, values.resistance]]
+      );
+    }
+
+    candidates.push(
+      ["calculate", [mode, values]],
+      ["solve", [mode, values]]
+    );
+
+    for (const [method, args] of candidates) {
+      if (typeof physics[method] === "function") {
+        try {
+          const result = physics[method](...args);
+
+          if (result !== undefined) {
+            return result;
+          }
+        } catch (_) {}
+      }
+    }
+
+    return undefined;
+  }
+
+  function localPhysics(mode, v) {
+    switch (mode) {
+      case "speed":
+        if (v.time === 0) {
+          throw new Error(
+            "Time cannot be zero."
+          );
+        }
+
+        return {
+          formula: "speed = distance ÷ time",
+          value: cleanNumber(
+            v.distance / v.time
+          )
+        };
+
+      case "force":
+        return {
+          formula: "F = ma",
+          value: cleanNumber(
+            v.mass * v.acceleration
+          )
+        };
+
+      case "energy":
+        return {
+          formula: "KE = ½mv²",
+          value: cleanNumber(
+            0.5 *
+            v.mass *
+            v.velocity *
+            v.velocity
+          )
+        };
+
+      case "power":
+        if (v.time === 0) {
+          throw new Error(
+            "Time cannot be zero."
+          );
+        }
+
+        return {
+          formula: "P = W ÷ t",
+          value: cleanNumber(
+            v.work / v.time
+          )
+        };
+
+      case "electricity":
+        if (v.resistance === 0) {
+          throw new Error(
+            "Resistance cannot be zero."
+          );
+        }
+
+        return {
+          formula: "I = V ÷ R",
+          value: cleanNumber(
+            v.voltage / v.resistance
+          )
+        };
+
+      default:
+        throw new Error(
+          "Unknown physics mode."
+        );
+    }
+  }
 
   /* ======================================================
      CHEMISTRY
   ====================================================== */
 
   function setupChemistry() {
+    $$("[data-chemistry-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        state.chemistryMode =
+          button.dataset.chemistryMode;
 
-    const buttons =
-      $$(".chemistry-selector button");
+        $$("[data-chemistry-mode]").forEach(item => {
+          item.classList.toggle(
+            "active",
+            item === button
+          );
+        });
 
+        renderChemistryFields();
+        saveState();
+      });
+    });
 
-    buttons.forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            buttons.forEach(
-              b =>
-                b.classList.remove(
-                  "active"
-                )
-            );
-
-
-            button.classList.add(
-              "active"
-            );
-
-
-            state.chemistryMode =
-              button.dataset.mode ||
-              button.dataset.chemistryMode ||
-              "moles";
-
-
-            updateChemistryFields();
-
-          }
-        );
-
-      }
-    );
-
-
-    const calculateButton =
+    const calculate =
       $("#calculateChemistry") ||
-      $("#chemistryCalculate") ||
+      $("#solveChemistry") ||
       $('[data-action="calculate-chemistry"]');
 
-
-    if (calculateButton) {
-
-      calculateButton.addEventListener(
+    if (calculate) {
+      calculate.addEventListener(
         "click",
         calculateChemistry
       );
-
     }
 
-
-    updateChemistryFields();
+    renderChemistryFields();
   }
 
+  function renderChemistryFields() {
+    const container =
+      $("#chemistryFields");
 
-  function updateChemistryFields() {
+    if (!container) return;
 
-    const fields =
-      $("#chemistryFields") ||
-      $(".chemistry-fields");
-
-
-    if (!fields) return;
-
-
-    const configs = {
-
+    const definitions = {
       moles: [
-        [
-          "mass",
-          "Mass",
-          "e.g. 18",
-          "g"
-        ],
-        [
-          "molarMass",
-          "Molar mass",
-          "e.g. 18",
-          "g/mol"
-        ]
+        ["mass", "Mass"],
+        ["molarMass", "Molar Mass"]
       ],
-
 
       molarity: [
-        [
-          "moles",
-          "Moles",
-          "e.g. 0.5",
-          "mol"
-        ],
-        [
-          "volume",
-          "Volume",
-          "e.g. 2",
-          "L"
-        ]
+        ["moles", "Moles"],
+        ["volume", "Volume"]
       ],
-
 
       gas: [
-        [
-          "pressure",
-          "Pressure",
-          "e.g. 101325",
-          "Pa"
-        ],
-        [
-          "volume",
-          "Volume",
-          "e.g. 0.0224",
-          "m³"
-        ],
-        [
-          "temperature",
-          "Temperature",
-          "e.g. 273.15",
-          "K"
-        ]
+        ["pressure", "Pressure"],
+        ["volume", "Volume"],
+        ["moles", "Moles"],
+        ["temperature", "Temperature"]
       ],
-
 
       ph: [
-        [
-          "concentration",
-          "Concentration",
-          "e.g. 0.001",
-          "mol/L"
-        ]
+        ["concentration", "Concentration"]
       ],
 
-
       heat: [
-        [
-          "mass",
-          "Mass",
-          "e.g. 2",
-          "kg"
-        ],
-        [
-          "specificHeat",
-          "Specific heat",
-          "e.g. 4186",
-          "J/kg·K"
-        ],
-        [
-          "deltaT",
-          "Temperature change",
-          "e.g. 10",
-          "K"
-        ]
+        ["mass", "Mass"],
+        ["specificHeat", "Specific Heat"],
+        ["temperatureChange", "Temperature Change"]
       ]
-
     };
 
+    const fields =
+      definitions[state.chemistryMode] ||
+      definitions.moles;
 
-    const config =
-      configs[state.chemistryMode] ||
-      configs.moles;
-
-
-    fields.innerHTML =
-      config
-        .map(
-          function (item) {
-
-            return `
-              <div class="input-group">
-
-                <label
-                  for="chemistry-${item[0]}"
-                >
-                  ${item[1]}
-                </label>
-
-                <input
-                  id="chemistry-${item[0]}"
-                  class="main-input chemistry-field"
-                  data-field="${item[0]}"
-                  type="number"
-                  inputmode="decimal"
-                  placeholder="${item[2]}"
-                >
-
-                <span class="input-help">
-                  Unit: ${item[3]}
-                </span>
-
-              </div>
-            `;
-
-          }
-        )
-        .join("");
+    container.innerHTML = fields
+      .map(([name, label]) => `
+        <div class="input-group">
+          <label for="chemistry-${name}">
+            ${label}
+          </label>
+          <input
+            id="chemistry-${name}"
+            data-field="${name}"
+            type="number"
+            inputmode="decimal"
+            step="any"
+            placeholder="Enter ${label.toLowerCase()}"
+          >
+        </div>
+      `)
+      .join("");
   }
 
-
   function calculateChemistry() {
+    const container =
+      $("#chemistryFields");
 
-    const fields =
-      $$(".chemistry-field");
-
-
-    if (!fields.length) return;
-
+    if (!container) return;
 
     const values = {};
 
+    $$("[data-field]", container).forEach(input => {
+      const raw = input.value.trim();
 
-    for (
-      const field of fields
-    ) {
-
-      if (
-        field.value.trim() === ""
-      ) {
-
-        showError(
-          field,
-          "Enter a value first."
+      if (!raw) {
+        throw new Error(
+          `Enter ${input.previousElementSibling?.textContent || "a value"}.`
         );
-
-        return;
       }
 
+      const n = Number(raw);
 
-      values[field.dataset.field] =
-        Number(field.value);
+      if (!Number.isFinite(n)) {
+        throw new Error("Enter valid numbers.");
+      }
 
-    }
-
-
-    const engine =
-      window.NOVERA_CHEMISTRY;
-
-
-    if (!engine) {
-
-      showError(
-        fields[0],
-        "Chemistry engine unavailable."
-      );
-
-      return;
-    }
-
+      values[input.dataset.field] = n;
+    });
 
     try {
-
       let result;
 
+      const chemistry = engines.chemistry();
 
-      switch (
-        state.chemistryMode
-      ) {
-
-        case "molarity":
-
-          result =
-            callFirst(
-              engine,
-              ["molarity"],
-              values.moles,
-              values.volume
-            );
-
-          break;
-
-
-        case "gas":
-
-          result =
-            callFirst(
-              engine,
-              ["idealGas"],
-              values.pressure,
-              values.volume,
-              values.temperature
-            );
-
-          break;
-
-
-        case "ph":
-
-          result =
-            callFirst(
-              engine,
-              ["pH", "ph"],
-              values.concentration
-            );
-
-          break;
-
-
-        case "heat":
-
-          result =
-            callFirst(
-              engine,
-              ["heat"],
-              values.mass,
-              values.specificHeat,
-              values.deltaT
-            );
-
-          break;
-
-
-        default:
-
-          result =
-            callFirst(
-              engine,
-              ["moles"],
-              values.mass,
-              values.molarMass
-            );
-
+      if (chemistry) {
+        result = tryChemistryEngine(
+          chemistry,
+          state.chemistryMode,
+          values
+        );
       }
 
-
-      if (
-        result === undefined
-      ) {
-
-        throw new Error();
-
+      if (result === undefined) {
+        result =
+          localChemistry(
+            state.chemistryMode,
+            values
+          );
       }
 
-
-      displaySmartAnswer(
-        "chemistry",
-        result
+      renderSmartAnswer(
+        findAnswerContainer("chemistry"),
+        result,
+        "Chemistry Result"
       );
 
-
       addHistory(
+        "Chemistry",
         state.chemistryMode,
         result
       );
-
-
-      fields.forEach(
-        clearError
-      );
-
-    } catch {
+    } catch (error) {
+      const first =
+        $("[data-field]", container);
 
       showError(
-        fields[0],
-        "Check the chemistry values."
+        first,
+        error.message ||
+          "Unable to calculate."
       );
-
     }
   }
 
+  function tryChemistryEngine(
+    chemistry,
+    mode,
+    values
+  ) {
+    const candidates = [];
+
+    if (mode === "moles") {
+      candidates.push(
+        ["molesFromMass", [
+          values.mass,
+          values.molarMass
+        ]],
+        ["moles", [
+          values.mass,
+          values.molarMass
+        ]]
+      );
+    }
+
+    if (mode === "molarity") {
+      candidates.push(
+        ["molarity", [
+          values.moles,
+          values.volume
+        ]]
+      );
+    }
+
+    if (mode === "gas") {
+      candidates.push(
+        ["idealGas", [
+          values.pressure,
+          values.volume,
+          values.moles,
+          values.temperature
+        ]]
+      );
+    }
+
+    if (mode === "ph") {
+      candidates.push(
+        ["pH", [
+          values.concentration
+        ]]
+      );
+    }
+
+    if (mode === "heat") {
+      candidates.push(
+        ["heat", [
+          values.mass,
+          values.specificHeat,
+          values.temperatureChange
+        ]]
+      );
+    }
+
+    candidates.push(
+      ["calculate", [mode, values]],
+      ["solve", [mode, values]]
+    );
+
+    for (const [method, args] of candidates) {
+      if (typeof chemistry[method] === "function") {
+        try {
+          const result =
+            chemistry[method](...args);
+
+          if (result !== undefined) {
+            return result;
+          }
+        } catch (_) {}
+      }
+    }
+
+    return undefined;
+  }
+
+  function localChemistry(mode, v) {
+    switch (mode) {
+      case "moles":
+        if (v.molarMass === 0) {
+          throw new Error(
+            "Molar mass cannot be zero."
+          );
+        }
+
+        return {
+          formula: "n = m ÷ M",
+          value: cleanNumber(
+            v.mass / v.molarMass
+          ),
+          unit: "mol"
+        };
+
+      case "molarity":
+        if (v.volume === 0) {
+          throw new Error(
+            "Volume cannot be zero."
+          );
+        }
+
+        return {
+          formula: "M = n ÷ V",
+          value: cleanNumber(
+            v.moles / v.volume
+          ),
+          unit: "mol/L"
+        };
+
+      case "gas":
+        if (
+          v.temperature === 0 ||
+          v.moles === 0
+        ) {
+          throw new Error(
+            "Temperature and moles must be non-zero."
+          );
+        }
+
+        // PV = nRT
+        const R = 8.314;
+
+        return {
+          formula: "PV = nRT",
+          value: cleanNumber(
+            (
+              v.moles *
+              R *
+              v.temperature
+            ) /
+            v.volume
+          ),
+          unit: "pressure"
+        };
+
+      case "ph":
+        if (v.concentration <= 0) {
+          throw new Error(
+            "Concentration must be positive."
+          );
+        }
+
+        return {
+          formula: "pH = −log₁₀[H⁺]",
+          value: cleanNumber(
+            -Math.log10(v.concentration)
+          )
+        };
+
+      case "heat":
+        return {
+          formula: "Q = mcΔT",
+          value: cleanNumber(
+            v.mass *
+            v.specificHeat *
+            v.temperatureChange
+          ),
+          unit: "J"
+        };
+
+      default:
+        throw new Error(
+          "Unknown chemistry mode."
+        );
+    }
+  }
 
   /* ======================================================
      STATISTICS
   ====================================================== */
 
   function setupStatistics() {
+    $$("[data-statistics-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        state.statisticsMode =
+          button.dataset.statisticsMode;
 
-    const buttons =
-      $$(".statistics-selector button");
+        $$("[data-statistics-mode]").forEach(item => {
+          item.classList.toggle(
+            "active",
+            item === button
+          );
+        });
 
+        saveState();
+      });
+    });
 
-    buttons.forEach(
-      function (button) {
-
-        button.addEventListener(
-          "click",
-          function () {
-
-            buttons.forEach(
-              b =>
-                b.classList.remove(
-                  "active"
-                )
-            );
-
-
-            button.classList.add(
-              "active"
-            );
-
-
-            state.statisticsMode =
-              button.dataset.mode ||
-              button.dataset.statisticsMode ||
-              "mean";
-
-          }
-        );
-
-      }
-    );
-
-
-    const analyseButton =
+    const calculate =
       $("#calculateStatistics") ||
       $("#analyseStatistics") ||
       $("#statisticsAnalyse") ||
-      $('[data-action="analyse-statistics"]');
+      $('[data-action="calculate-statistics"]');
 
-
-    if (analyseButton) {
-
-      analyseButton.addEventListener(
+    if (calculate) {
+      calculate.addEventListener(
         "click",
-        analyseStatistics
+        calculateStatistics
       );
+    }
 
+    const input = $("#statisticsInput");
+
+    if (input) {
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          calculateStatistics();
+        }
+      });
     }
   }
 
+  function parseNumbers(value) {
+    const numbers =
+      value
+        .split(/[,\s;]+/)
+        .map(Number)
+        .filter(Number.isFinite);
 
-  function analyseStatistics() {
+    if (!numbers.length) {
+      throw new Error(
+        "Enter numbers separated by commas."
+      );
+    }
 
+    return numbers;
+  }
+
+  function calculateStatistics() {
     const input =
-      $("#statisticsInput") ||
-      $("#dataInput") ||
-      $(".statistics-input") ||
-      $(".data-input");
-
+      $("#statisticsInput");
 
     if (!input) return;
 
-
-    const raw =
-      input.value.trim();
-
-
-    if (!raw) {
-
-      showError(
-        input,
-        "Enter your numbers first."
-      );
-
-      return;
-    }
-
-
-    const data =
-      parseNumbers(raw);
-
-
-    if (!data.length) {
-
-      showError(
-        input,
-        "I couldn't find any numbers."
-      );
-
-      return;
-    }
-
-
-    const engine =
-      window.NOVERA_STATISTICS;
-
-
-    if (!engine) {
-
-      showError(
-        input,
-        "Statistics engine unavailable."
-      );
-
-      return;
-    }
-
-
     try {
+      const numbers =
+        parseNumbers(input.value.trim());
 
       let result;
 
+      const statistics =
+        engines.statistics();
 
-      switch (
-        state.statisticsMode
-      ) {
-
-        case "median":
-
-          result =
-            callFirst(
-              engine,
-              ["median"],
-              data
-            );
-
-          break;
-
-
-        case "mode":
-
-          result =
-            callFirst(
-              engine,
-              ["mode"],
-              data
-            );
-
-          break;
-
-
-        case "range":
-
-          result =
-            callFirst(
-              engine,
-              ["range"],
-              data
-            );
-
-          break;
-
-
-        case "std":
-
-        case "standardDeviation":
-
-          result =
-            callFirst(
-              engine,
-              [
-                "standardDeviation",
-                "stdDev"
-              ],
-              data
-            );
-
-          break;
-
-
-        default:
-
-          result =
-            callFirst(
-              engine,
-              [
-                "mean",
-                "average"
-              ],
-              data
-            );
-
+      if (statistics) {
+        result =
+          tryStatisticsEngine(
+            statistics,
+            state.statisticsMode,
+            numbers
+          );
       }
 
-
-      if (
-        result === undefined
-      ) {
-
-        throw new Error();
-
+      if (result === undefined) {
+        result =
+          localStatistics(
+            state.statisticsMode,
+            numbers
+          );
       }
 
-
-      displaySmartAnswer(
-        "statistics",
-        result
+      renderSmartAnswer(
+        findAnswerContainer("statistics"),
+        result,
+        "Statistics Result"
       );
-
 
       addHistory(
-        state.statisticsMode,
+        "Statistics",
+        input.value.trim(),
         result
       );
-
-
-      clearError(input);
-
-    } catch {
-
+    } catch (error) {
       showError(
         input,
-        "Something went wrong analysing the data."
+        error.message ||
+          "Unable to analyse the data."
       );
-
     }
   }
 
+  function tryStatisticsEngine(
+    statistics,
+    mode,
+    numbers
+  ) {
+    const candidates = [];
+
+    if (mode === "mean") {
+      candidates.push(
+        ["mean", [numbers]]
+      );
+    }
+
+    if (mode === "median") {
+      candidates.push(
+        ["median", [numbers]]
+      );
+    }
+
+    if (mode === "mode") {
+      candidates.push(
+        ["mode", [numbers]]
+      );
+    }
+
+    if (mode === "range") {
+      candidates.push(
+        ["range", [numbers]]
+      );
+    }
+
+    if (
+      mode === "sd" ||
+      mode === "standardDeviation"
+    ) {
+      candidates.push(
+        ["standardDeviation", [numbers]],
+        ["standardDeviationPopulation", [numbers]]
+      );
+    }
+
+    candidates.push(
+      ["calculate", [mode, numbers]],
+      ["analyse", [mode, numbers]]
+    );
+
+    for (const [method, args] of candidates) {
+      if (typeof statistics[method] === "function") {
+        try {
+          const result =
+            statistics[method](...args);
+
+          if (result !== undefined) {
+            return result;
+          }
+        } catch (_) {}
+      }
+    }
+
+    return undefined;
+  }
+
+  function localStatistics(mode, numbers) {
+    const sorted =
+      [...numbers].sort((a, b) => a - b);
+
+    switch (mode) {
+      case "mean":
+        return {
+          mean: cleanNumber(
+            numbers.reduce(
+              (sum, n) => sum + n,
+              0
+            ) / numbers.length
+          ),
+          count: numbers.length
+        };
+
+      case "median":
+        return {
+          median:
+            sorted.length % 2
+              ? sorted[
+                  Math.floor(sorted.length / 2)
+                ]
+              : cleanNumber(
+                  (
+                    sorted[
+                      sorted.length / 2 - 1
+                    ] +
+                    sorted[
+                      sorted.length / 2
+                    ]
+                  ) / 2
+                )
+        };
+
+      case "mode": {
+        const frequency = {};
+
+        numbers.forEach(n => {
+          frequency[n] =
+            (frequency[n] || 0) + 1;
+        });
+
+        const max =
+          Math.max(
+            ...Object.values(frequency)
+          );
+
+        const modes =
+          Object.keys(frequency)
+            .filter(
+              key =>
+                frequency[key] === max
+            )
+            .map(Number);
+
+        return {
+          mode:
+            max === 1
+              ? "No mode"
+              : modes,
+          frequency: max
+        };
+      }
+
+      case "range":
+        return {
+          minimum: sorted[0],
+          maximum: sorted[sorted.length - 1],
+          range: cleanNumber(
+            sorted[sorted.length - 1] -
+            sorted[0]
+          )
+        };
+
+      case "sd": {
+        const mean =
+          numbers.reduce(
+            (s, n) => s + n,
+            0
+          ) / numbers.length;
+
+        const variance =
+          numbers.reduce(
+            (s, n) =>
+              s +
+              Math.pow(n - mean, 2),
+            0
+          ) / numbers.length;
+
+        return {
+          mean: cleanNumber(mean),
+          variance: cleanNumber(variance),
+          standardDeviation:
+            cleanNumber(
+              Math.sqrt(variance)
+            )
+        };
+      }
+
+      default:
+        throw new Error(
+          "Unknown statistics mode."
+        );
+    }
+  }
 
   /* ======================================================
-     ANSWER DISPLAY
+     ANSWER RENDERING
   ====================================================== */
 
-  function displayAnswer(
-    tool,
-    value,
-    unit
-  ) {
+  function findAnswerContainer(tool) {
+    const selectors = [
+      `#${tool}Output`,
+      `#${tool}Result`,
+      `#${tool}Answer`,
+      `.${tool}-output`,
+      `.${tool}-result`,
+      `.${tool}-answer`
+    ];
+
+    for (const selector of selectors) {
+      const element = $(selector);
+
+      if (element) return element;
+    }
 
     const panel =
-      findPanel(tool);
+      $(`#panel-${tool}`);
 
+    if (panel) {
+      let answer =
+        $(".answer-area", panel) ||
+        $(".tool-answer", panel) ||
+        $(".result-area", panel);
 
-    if (!panel) return;
+      if (answer) return answer;
 
+      answer =
+        document.createElement("div");
 
-    const card =
-      $(".answer-card", panel);
+      answer.className =
+        "tool-generated-answer";
 
+      panel.appendChild(answer);
 
-    if (!card) return;
-
-
-    const valueElement =
-      $(".answer-value", card);
-
-
-    const unitElement =
-      $(".answer-unit", card);
-
-
-    const formula =
-      $(".answer-formula", card);
-
-
-    if (valueElement) {
-
-      valueElement.textContent =
-        formatResult(value);
-
+      return answer;
     }
 
-
-    if (unitElement) {
-
-      unitElement.textContent =
-        unit || "";
-
-    }
-
-
-    if (formula) {
-
-      formula.textContent =
-        "";
-
-    }
-
-
-    animateAnswer(card);
+    return null;
   }
 
-
-  function displaySmartAnswer(
-    tool,
-    result
+  function renderAnswer(
+    container,
+    result,
+    title
   ) {
+    if (!container) return;
 
-    const panel =
-      findPanel(tool);
-
-
-    if (!panel) return;
-
-
-    const card =
-      $(".answer-card", panel);
-
-
-    if (!card) return;
-
-
-    const valueElement =
-      $(".answer-value", card);
-
-
-    const unitElement =
-      $(".answer-unit", card);
-
-
-    const formula =
-      $(".answer-formula", card);
-
+    let value = result;
 
     if (
       result &&
-      typeof result === "object"
+      typeof result === "object" &&
+      "value" in result
     ) {
-
-      const main =
-        result.value ??
-        result.result ??
-        result.answer ??
-        result.solution;
-
-
-      if (valueElement) {
-
-        valueElement.textContent =
-          formatResult(
-            main !== undefined
-              ? main
-              : JSON.stringify(result)
-          );
-
-      }
-
-
-      if (unitElement) {
-
-        unitElement.textContent =
-          result.unit ||
-          result.units ||
-          "";
-
-      }
-
-
-      if (formula) {
-
-        formula.textContent =
-          result.formula ||
-          result.explanation ||
-          "";
-
-      }
-
-    } else {
-
-      if (valueElement) {
-
-        valueElement.textContent =
-          formatResult(result);
-
-      }
-
-
-      if (unitElement) {
-
-        unitElement.textContent =
-          "";
-
-      }
-
-
-      if (formula) {
-
-        formula.textContent =
-          "";
-
-      }
-
+      value = result.value;
     }
 
+    const unit =
+      result &&
+      typeof result === "object" &&
+      result.unit
+        ? ` ${escapeHTML(result.unit)}`
+        : "";
 
-    animateAnswer(card);
+    container.innerHTML = `
+      <div class="answer-card">
+        <div class="answer-label">
+          ${escapeHTML(title)}
+        </div>
+        <div class="answer-value">
+          ${escapeHTML(formatResult(value))}
+          ${unit}
+        </div>
+      </div>
+    `;
+
+    container.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest"
+    });
   }
 
+  function renderSmartAnswer(
+    container,
+    result,
+    title
+  ) {
+    if (!container) return;
 
-  function animateAnswer(card) {
+    if (
+      result === null ||
+      result === undefined
+    ) {
+      renderAnswer(
+        container,
+        "No result",
+        title
+      );
 
-    card.classList.remove(
-      "has-result"
-    );
+      return;
+    }
 
-    void card.offsetWidth;
+    if (
+      typeof result !== "object" ||
+      Array.isArray(result)
+    ) {
+      renderAnswer(
+        container,
+        result,
+        title
+      );
 
-    card.classList.add(
-      "has-result"
-    );
+      return;
+    }
+
+    const entries =
+      Object.entries(result)
+        .filter(
+          ([, value]) =>
+            value !== undefined &&
+            value !== null
+        );
+
+    container.innerHTML = `
+      <div class="answer-card">
+        <div class="answer-label">
+          ${escapeHTML(title)}
+        </div>
+
+        <div class="smart-answer-list">
+          ${entries
+            .map(([key, value]) => `
+              <div class="smart-answer-row">
+                <span>
+                  ${escapeHTML(
+                    humanize(key)
+                  )}
+                </span>
+
+                <strong>
+                  ${escapeHTML(
+                    formatResult(value)
+                  )}
+                </strong>
+              </div>
+            `)
+            .join("")}
+        </div>
+      </div>
+    `;
+
+    container.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest"
+    });
   }
 
+  function formatResult(value) {
+    if (typeof value === "number") {
+      return formatNumber(value);
+    }
 
-  function findPanel(tool) {
+    if (Array.isArray(value)) {
+      return value
+        .map(item =>
+          typeof item === "number"
+            ? formatNumber(item)
+            : text(item)
+        )
+        .join(", ");
+    }
 
-    return (
-      document.querySelector(
-        `.tool-panel[data-tool="${tool}"]`
-      ) ||
-      document.querySelector(
-        `.tool-panel[data-panel="${tool}"]`
-      ) ||
-      byId(
-        `panel-${tool}`
-      ) ||
-      document.querySelector(
-        `.tool-panel.${tool}-panel`
-      )
-    );
+    if (
+      value &&
+      typeof value === "object"
+    ) {
+      return Object.entries(value)
+        .map(
+          ([key, val]) =>
+            `${humanize(key)}: ${formatResult(val)}`
+        )
+        .join(" • ");
+    }
+
+    return text(value);
   }
 
+  function humanize(value) {
+    return text(value)
+      .replace(/([A-Z])/g, " $1")
+      .replace(/[-_]/g, " ")
+      .replace(/^./, c => c.toUpperCase());
+  }
 
   /* ======================================================
      HISTORY
   ====================================================== */
 
   function setupHistory() {
-
     const clear =
       $("#clearHistory");
 
+    if (clear) {
+      clear.addEventListener(
+        "click",
+        clearHistory
+      );
+    }
+  }
 
-    if (!clear) return;
+  function loadState() {
+    try {
+      const saved =
+        JSON.parse(
+          localStorage.getItem(
+            HISTORY_KEY
+          ) || "[]"
+        );
 
-
-    clear.addEventListener(
-      "click",
-      function () {
-
-        state.history = [];
-
-        saveHistory();
-
-        renderHistory();
-
+      if (Array.isArray(saved)) {
+        state.history = saved;
       }
+    } catch (_) {
+      state.history = [];
+    }
+
+    const memory =
+      Number(
+        localStorage.getItem(
+          MEMORY_KEY
+        )
+      );
+
+    if (Number.isFinite(memory)) {
+      state.memory = memory;
+    }
+  }
+
+  function saveState() {
+    localStorage.setItem(
+      HISTORY_KEY,
+      JSON.stringify(
+        state.history.slice(0, 50)
+      )
     );
   }
 
-
   function addHistory(
-    expression,
+    tool,
+    input,
     result
   ) {
+    const entry = {
+      id:
+        Date.now() +
+        Math.random()
+          .toString(16)
+          .slice(2),
 
-    state.history.unshift({
-
-      expression:
-        String(expression),
-
+      tool,
+      input: text(input),
       result:
-        formatResult(result),
+        typeof result === "object"
+          ? JSON.stringify(result)
+          : text(result),
 
       time:
-        Date.now()
+        new Date().toLocaleTimeString()
+    };
 
-    });
-
+    state.history.unshift(entry);
 
     state.history =
-      state.history.slice(
-        0,
-        20
-      );
+      state.history.slice(0, 50);
 
-
-    saveHistory();
-
+    saveState();
     renderHistory();
   }
 
-
   function renderHistory() {
-
     const list =
-      $("#historyList") ||
-      $(".history-list");
-
+      $("#historyList");
 
     if (!list) return;
 
-
     if (!state.history.length) {
-
       list.innerHTML = `
         <div class="history-empty">
-          <span>↺</span>
-          <p>Your calculations will appear here.</p>
+          No calculations yet.
         </div>
       `;
 
       return;
     }
 
-
     list.innerHTML =
       state.history
-        .map(
-          function (item) {
+        .map(item => `
+          <div
+            class="history-item"
+            data-history-id="${escapeHTML(item.id)}"
+          >
+            <div class="history-item-main">
+              <strong>
+                ${escapeHTML(item.tool)}
+              </strong>
 
-            return `
-              <div class="history-item">
+              <span>
+                ${escapeHTML(item.input)}
+              </span>
+            </div>
 
-                <span class="history-expression">
-                  ${escapeHTML(
-                    item.expression
-                  )}
-                </span>
+            <div class="history-item-result">
+              ${escapeHTML(
+                historyResult(item.result)
+              )}
+            </div>
 
-                <span class="history-result">
-                  ${escapeHTML(
-                    item.result
-                  )}
-                </span>
-
-              </div>
-            `;
-
-          }
-        )
+            <small>
+              ${escapeHTML(item.time)}
+            </small>
+          </div>
+        `)
         .join("");
   }
 
-
-  function loadHistory() {
-
+  function historyResult(result) {
     try {
+      const parsed =
+        JSON.parse(result);
 
-      const data =
-        JSON.parse(
-          localStorage.getItem(
-            "novera-toolkit-history"
-          ) || "[]"
-        );
-
-
-      if (
-        !Array.isArray(data)
-      ) {
-
-        return [];
-
-      }
-
-
-      return data.slice(
-        0,
-        20
-      );
-
-    } catch {
-
-      return [];
-
+      return formatResult(parsed);
+    } catch (_) {
+      return result;
     }
   }
 
+  function clearHistory() {
+    state.history = [];
 
-  function saveHistory() {
+    localStorage.removeItem(
+      HISTORY_KEY
+    );
 
-    try {
-
-      localStorage.setItem(
-        "novera-toolkit-history",
-        JSON.stringify(
-          state.history
-        )
-      );
-
-    } catch {
-      /* Ignore storage failures */
-    }
+    renderHistory();
   }
 
+  /* ======================================================
+     WORKSPACE CONTROLS
+  ====================================================== */
+
+  function setupWorkspaceControls() {
+    const clear =
+      $("#clearWorkspace");
+
+    if (!clear) return;
+
+    clear.addEventListener(
+      "click",
+      clearWorkspace
+    );
+  }
+
+  function clearWorkspace() {
+    const panel =
+      $(".tool-panel.active-panel") ||
+      $(".tool-panel.active");
+
+    if (!panel) return;
+
+    $$("input, textarea, select", panel)
+      .forEach(input => {
+        input.value = "";
+      });
+
+    $$(".answer-card, .tool-generated-answer", panel)
+      .forEach(element => {
+        if (
+          element.classList.contains(
+            "tool-generated-answer"
+          )
+        ) {
+          element.innerHTML = "";
+        } else {
+          element.remove();
+        }
+      });
+  }
+
+  /* ======================================================
+     ERRORS
+  ====================================================== */
+
+  function showError(
+    input,
+    message
+  ) {
+    if (!input) {
+      alert(message);
+      return;
+    }
+
+    const parent =
+      input.parentElement || input;
+
+    const old =
+      $(".tool-error", parent);
+
+    if (old) old.remove();
+
+    const error =
+      document.createElement("div");
+
+    error.className =
+      "tool-error";
+
+    error.textContent = message;
+
+    parent.appendChild(error);
+
+    input.focus();
+
+    window.setTimeout(() => {
+      error.remove();
+    }, 4000);
+  }
 
   /* ======================================================
      KEYBOARD
   ====================================================== */
 
   function setupKeyboard() {
-
     document.addEventListener(
       "keydown",
-      function (event) {
-
+      event => {
         if (
-          (
-            event.ctrlKey ||
-            event.metaKey
-          ) &&
-          event.key.toLowerCase() === "k"
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey
         ) {
-
-          event.preventDefault();
-
-
-          const activePanel =
-            $(".tool-panel.active-panel");
-
-
-          if (!activePanel) return;
-
-
-          const input =
-            $("input, textarea", activePanel);
-
-
-          if (input) {
-
-            input.focus();
-
-          }
+          return;
         }
 
+        if (event.key === "Escape") {
+          const error =
+            $(".tool-error");
 
-        if (
-          event.key === "Escape"
-        ) {
-
-          if (
-            document.activeElement &&
-            typeof document
-              .activeElement
-              .blur === "function"
-          ) {
-
-            document.activeElement.blur();
-
+          if (error) {
+            error.remove();
           }
-
         }
-
       }
     );
   }
 
-
   /* ======================================================
-     REVEAL ANIMATIONS
+     REVEAL ANIMATION
   ====================================================== */
 
-  function setupRevealAnimations() {
-
+  function setupReveal() {
     const elements =
-      $$(".reveal");
-
+      $$(".reveal, [data-reveal]");
 
     if (!elements.length) return;
-
 
     if (
       !("IntersectionObserver" in window)
     ) {
-
-      elements.forEach(
-        el =>
-          el.classList.add(
-            "visible"
-          )
-      );
+      elements.forEach(element => {
+        element.classList.add("visible");
+      });
 
       return;
     }
 
-
     const observer =
       new IntersectionObserver(
-        function (entries) {
+        entries => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add(
+                "visible"
+              );
 
-          entries.forEach(
-            function (entry) {
-
-              if (
-                entry.isIntersecting
-              ) {
-
-                entry.target.classList.add(
-                  "visible"
-                );
-
-
-                observer.unobserve(
-                  entry.target
-                );
-
-              }
-
+              observer.unobserve(
+                entry.target
+              );
             }
-          );
-
+          });
         },
         {
           threshold: 0.08
         }
       );
 
-
-    elements.forEach(
-      el =>
-        observer.observe(el)
-    );
+    elements.forEach(element => {
+      observer.observe(element);
+    });
   }
 
-
   /* ======================================================
-     HELPERS
+     RESPONSIVE GRAPH
   ====================================================== */
 
-  function callFirst(
-    object,
-    methods,
-    ...args
-  ) {
-
-    for (
-      const method of methods
-    ) {
+  window.addEventListener(
+    "resize",
+    () => {
+      const canvas =
+        $("#graphCanvas");
 
       if (
-        object &&
-        typeof object[method] ===
-        "function"
+        canvas &&
+        state.activeTool === "graph"
       ) {
+        const input =
+          $("#graphInput");
 
-        return object[method](
-          ...args
-        );
+        if (
+          input &&
+          input.value.trim()
+        ) {
+          try {
+            const result =
+              localGraph(
+                input.value.trim(),
+                state.graphMode
+              );
 
+            drawGraphCanvas(
+              canvas,
+              result
+            );
+          } catch (_) {}
+        }
       }
-
     }
-
-
-    return undefined;
-  }
-
-
-  function formatResult(value) {
-
-    if (
-      value === null ||
-      value === undefined
-    ) {
-
-      return "—";
-
-    }
-
-
-    if (
-      typeof value === "number"
-    ) {
-
-      if (
-        !Number.isFinite(value)
-      ) {
-
-        return "Undefined";
-
-      }
-
-
-      if (
-        Math.abs(value) >= 1e9 ||
-        (
-          Math.abs(value) > 0 &&
-          Math.abs(value) < 1e-7
-        )
-      ) {
-
-        return value.toExponential(6);
-
-      }
-
-
-      return Number(
-        value.toFixed(10)
-      ).toString();
-
-    }
-
-
-    if (
-      Array.isArray(value)
-    ) {
-
-      return value
-        .map(formatResult)
-        .join(", ");
-
-    }
-
-
-    if (
-      typeof value === "object"
-    ) {
-
-      return String(
-        value.value ??
-        value.result ??
-        value.answer ??
-        JSON.stringify(value)
-      );
-
-    }
-
-
-    return String(value);
-  }
-
-
-  function parseNumbers(text) {
-
-    return text
-      .split(/[\s,;]+/)
-      .map(Number)
-      .filter(Number.isFinite);
-  }
-
-
-  function showError(
-    element,
-    message
-  ) {
-
-    if (!element) return;
-
-
-    clearError(element);
-
-
-    element.classList.add(
-      "has-error"
-    );
-
-
-    const messageElement =
-      document.createElement(
-        "div"
-      );
-
-
-    messageElement.className =
-      "error-message";
-
-
-    messageElement.textContent =
-      message;
-
-
-    if (
-      element.parentElement
-    ) {
-
-      element.parentElement.appendChild(
-        messageElement
-      );
-
-    }
-
-
-    setTimeout(
-      function () {
-
-        clearError(element);
-
-      },
-      3500
-    );
-  }
-
-
-  function clearError(element) {
-
-    if (!element) return;
-
-
-    element.classList.remove(
-      "has-error"
-    );
-
-
-    const parent =
-      element.parentElement;
-
-
-    if (!parent) return;
-
-
-    const error =
-      $(".error-message", parent);
-
-
-    if (error) {
-
-      error.remove();
-
-    }
-  }
-
-
-  function escapeHTML(value) {
-
-    return String(value)
-      .replace(
-        /&/g,
-        "&amp;"
-      )
-      .replace(
-        /</g,
-        "&lt;"
-      )
-      .replace(
-        />/g,
-        "&gt;"
-      )
-      .replace(
-        /"/g,
-        "&quot;"
-      )
-      .replace(
-        /'/g,
-        "&#039;"
-      );
-  }
-
+  );
 
   /* ======================================================
-     GLOBAL ACCESS
+     PUBLIC API
   ====================================================== */
 
   window.NOVERA_TOOLKIT = {
+    state,
 
     activateTool,
-
-    addHistory,
-
-    renderHistory,
 
     calculateCalculator,
 
@@ -3292,8 +2946,13 @@
 
     calculateChemistry,
 
-    analyseStatistics
+    calculateStatistics,
 
+    clearHistory,
+
+    clearWorkspace,
+
+    renderHistory
   };
 
 })();
