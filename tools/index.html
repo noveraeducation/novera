@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
+
+  <meta
+    name="theme-color"
+    content="#0b0c10"
+  >
+
+  <meta
+    name="description"
+    content="Novera Toolkit — free, simple and powerful calculators for mathematics, physics, chemistry and statistics."
+  >
+
+  <meta
+    name="robots"
+    content="index, follow"
+  >
+
+  <link
+    rel="canonical"
+    href="https://noveraeducation.github.io/novera/tools/"
+  >
+
+  <title>Novera Toolkit — Simple Tools. Powerful Calculations.</title>
+
+  <!-- =====================================================
+       TOOLKIT STYLES
+  ====================================================== -->
+
+  <link
+    rel="stylesheet"
+    href="toolkit.css"
+  >
+</head>
+
+<body>
+
+  <!-- =====================================================
+       PAGE LOADER
+  ====================================================== -->
+
+  <div
+    id="pageLoader"
+    class="page-loader"
+    aria-hidden="true"
+  >
+    <div class="loader-mark">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+
+    <p>NOVERA</p>
+  </div>
+
+
+  <!-- =====================================================
+       HEADER
+  ====================================================== -->
+
+  <header
+    class="toolkit-header"
+    id="toolkitHeader"
+  >
+
+    <div class="header-inner">
+
+      <!-- Brand -->
+
+      <a
+        href="../index.html"
+        class="brand"
+        aria-label="Novera home"
+      >
+
+        <span class="brand-symbol">
+          N
+        </span>
+
+        <span class="brand-text">
+          NOVERA
+        </span>
+
+      </a>
+
+
+      <!-- Header actions -->
+
+      <div class="header-actions">
+
+        <button
+          type="button"
+          class="icon-button"
+          id="themeToggle"
+          aria-label="Toggle dark and light mode"
+          title="Toggle theme"
+        >
+          <span id="themeIcon">☼</span>
+        </button>
+
+        <a
+          href="../index.html"
+          class="back-button"
+        >
+          <span>←</span>
+          <span>Home</span>
+        </a>
+
+      </div>
+
+    </div>
+
+  </header>
+
+
+  <!-- =====================================================
+       MAIN
+  ====================================================== -->
+
+  <main id="mainContent">
+
+
+    <!-- ===================================================
+         HERO
+    ==================================================== -->
+
+    <section
+      class="toolkit-hero"
+      aria-labelledby="toolkitTitle"
+    >
+
+      <div class="hero-glow hero-glow-one"></div>
+      <div class="hero-glow hero-glow-two"></div>
+
+      <div class="hero-inner">
+
+        <div class="eyebrow">
+          <span class="eyebrow-dot"></span>
+          FREE TOOLKIT
+        </div>
+
+
+        <h1 id="toolkitTitle">
+          Think less about
+          <span>the calculation.</span>
+        </h1>
+
+
+        <p class="hero-description">
+          Simple tools for maths, science and everyday problem-solving.
+          Powerful underneath. Effortless on the surface.
+        </p>
+
+
+        <div class="hero-actions">
+
+          <button
+            type="button"
+            class="primary-action"
+            id="startToolkit"
+          >
+            <span>Start calculating</span>
+            <span class="action-arrow">↓</span>
+          </button>
+
+          <button
+            type="button"
+            class="secondary-action"
+            id="showAllTools"
+          >
+            Explore tools
+          </button>
+
+        </div>
+
+
+        <div class="hero-meta">
+
+          <span>
+            <strong>6</strong>
+            powerful tools
+          </span>
+
+          <span class="meta-divider"></span>
+
+          <span>
+            <strong>100%</strong>
+            free
+          </span>
+
+          <span class="meta-divider"></span>
+
+          <span>
+            No login
+          </span>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         TOOL SELECTOR
+    ==================================================== -->
+
+    <section
+      class="tool-selector-section"
+      id="tools"
+      aria-labelledby="toolSelectorTitle"
+    >
+
+      <div class="section-container">
+
+
+        <div class="section-heading">
+
+          <div>
+
+            <span class="section-kicker">
+              CHOOSE YOUR TOOL
+            </span>
+
+            <h2 id="toolSelectorTitle">
+              What are you solving?
+            </h2>
+
+          </div>
+
+          <p class="section-note">
+            Pick one. We'll keep the rest out of your way.
+          </p>
+
+        </div>
+
+
+        <!-- =================================================
+             TOOL CARDS
+        ================================================== -->
+
+        <div
+          class="tool-grid"
+          id="toolGrid"
+        >
+
+
+          <!-- CALCULATOR -->
+
+          <button
+            type="button"
+            class="tool-card active"
+            data-tool="calculator"
+            aria-label="Open Calculator"
+          >
+
+            <div class="tool-card-top">
+
+              <span class="tool-icon calculator-icon">
+                +
+              </span>
+
+              <span class="tool-number">
+                01
+              </span>
+
+            </div>
+
+            <div class="tool-card-content">
+
+              <h3>
+                Calculator
+              </h3>
+
+              <p>
+                Everyday maths, scientific calculations and conversions.
+              </p>
+
+            </div>
+
+            <span class="tool-card-arrow">
+              →
+            </span>
+
+          </button>
+
+
+          <!-- ALGEBRA -->
+
+          <button
+            type="button"
+            class="tool-card"
+            data-tool="algebra"
+            aria-label="Open Algebra"
+          >
+
+            <div class="tool-card-top">
+
+              <span class="tool-icon algebra-icon">
+                x
+              </span>
+
+              <span class="tool-number">
+                02
+              </span>
+
+            </div>
+
+            <div class="tool-card-content">
+
+              <h3>
+                Algebra
+              </h3>
+
+              <p>
+                Equations, quadratics, ratios, functions and more.
+              </p>
+
+            </div>
+
+            <span class="tool-card-arrow">
+              →
+            </span>
+
+          </button>
+
+
+          <!-- GRAPH -->
+
+          <button
+            type="button"
+            class="tool-card"
+            data-tool="graph"
+            aria-label="Open Graphing"
+          >
+
+            <div class="tool-card-top">
+
+              <span class="tool-icon graph-icon">
+                ↗
+              </span>
+
+              <span class="tool-number">
+                03
+              </span>
+
+            </div>
+
+            <div class="tool-card-content">
+
+              <h3>
+                Graphing
+              </h3>
+
+              <p>
+                Plot functions, points, curves and mathematical relationships.
+              </p>
+
+            </div>
+
+            <span class="tool-card-arrow">
+              →
+            </span>
+
+          </button>
+
+
+          <!-- PHYSICS -->
+
+          <button
+            type="button"
+            class="tool-card"
+            data-tool="physics"
+            aria-label="Open Physics"
+          >
+
+            <div class="tool-card-top">
+
+              <span class="tool-icon physics-icon">
+                φ
+              </span>
+
+              <span class="tool-number">
+                04
+              </span>
+
+            </div>
+
+            <div class="tool-card-content">
+
+              <h3>
+                Physics
+              </h3>
+
+              <p>
+                Motion, force, energy, electricity, waves and optics.
+              </p>
+
+            </div>
+
+            <span class="tool-card-arrow">
+              →
+            </span>
+
+          </button>
+
+
+          <!-- CHEMISTRY -->
+
+          <button
+            type="button"
+            class="tool-card"
+            data-tool="chemistry"
+            aria-label="Open Chemistry"
+          >
+
+            <div class="tool-card-top">
+
+              <span class="tool-icon chemistry-icon">
+                ◇
+              </span>
+
+              <span class="tool-number">
+                05
+              </span>
+
+            </div>
+
+            <div class="tool-card-content">
+
+              <h3>
+                Chemistry
+              </h3>
+
+              <p>
+                Moles, concentration, gases, pH, heat and chemistry maths.
+              </p>
+
+            </div>
+
+            <span class="tool-card-arrow">
+              →
+            </span>
+
+          </button>
+
+
+          <!-- STATISTICS -->
+
+          <button
+            type="button"
+            class="tool-card"
+            data-tool="statistics"
+            aria-label="Open Statistics"
+          >
+
+            <div class="tool-card-top">
+
+              <span class="tool-icon statistics-icon">
+                ∑
+              </span>
+
+              <span class="tool-number">
+                06
+              </span>
+
+            </div>
+
+            <div class="tool-card-content">
+
+              <h3>
+                Statistics
+              </h3>
+
+              <p>
+                Mean, median, mode, deviation, probability and data.
+              </p>
+
+            </div>
+
+            <span class="tool-card-arrow">
+              →
+            </span>
+
+          </button>
+
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         WORKSPACE
+    ==================================================== -->
+
+    <section
+      class="workspace-section"
+      id="workspace"
+      aria-labelledby="workspaceTitle"
+    >
+
+      <div class="workspace-container">
+
+
+        <!-- Workspace header -->
+
+        <div class="workspace-header">
+
+          <div>
+
+            <span class="section-kicker">
+              WORKSPACE
+            </span>
+
+            <h2 id="workspaceTitle">
+              Calculator
+            </h2>
+
+          </div>
+
+
+          <button
+            type="button"
+            class="clear-button"
+            id="clearWorkspace"
+          >
+            Clear
+          </button>
+
+        </div>
+
+
+        <!-- =================================================
+             TOOL PANEL
+        ================================================== -->
+
+        <div
+          class="tool-workspace"
+          id="toolWorkspace"
+        >
+
+
+          <!-- =================================================
+               CALCULATOR PANEL
+          ================================================== -->
+
+          <div
+            class="tool-panel active-panel"
+            id="panel-calculator"
+            data-panel="calculator"
+          >
+
+            <div class="panel-intro">
+
+              <span class="panel-icon">
+                +
+              </span>
+
+              <div>
+
+                <h3>
+                  Calculator
+                </h3>
+
+                <p>
+                  Enter an expression and get the answer instantly.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="input-group">
+
+              <label for="calculatorInput">
+                Expression
+              </label>
+
+              <div class="input-with-action">
+
+                <input
+                  type="text"
+                  id="calculatorInput"
+                  class="main-input"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="Example: 25 × 4 + 10"
+                >
+
+                <button
+                  type="button"
+                  class="input-action"
+                  id="calculateBasic"
+                >
+                  Calculate
+                </button>
+
+              </div>
+
+            </div>
+
+
+            <div class="quick-chips">
+
+              <button type="button" data-expression="25 + 75">
+                25 + 75
+              </button>
+
+              <button type="button" data-expression="15 × 8">
+                15 × 8
+              </button>
+
+              <button type="button" data-expression="250 ÷ 5">
+                250 ÷ 5
+              </button>
+
+              <button type="button" data-expression="12²">
+                12²
+              </button>
+
+            </div>
+
+
+            <div
+              class="answer-card"
+              id="calculatorAnswer"
+              aria-live="polite"
+            >
+
+              <span class="answer-label">
+                ANSWER
+              </span>
+
+              <div class="answer-value">
+                —
+              </div>
+
+              <div class="answer-unit"></div>
+
+              <div class="answer-formula"></div>
+
+            </div>
+
+
+            <div class="calculator-modes">
+
+              <button
+                type="button"
+                class="mode-button active"
+                data-calculator-mode="basic"
+              >
+                Basic
+              </button>
+
+              <button
+                type="button"
+                class="mode-button"
+                data-calculator-mode="scientific"
+              >
+                Scientific
+              </button>
+
+              <button
+                type="button"
+                class="mode-button"
+                data-calculator-mode="percentage"
+              >
+                Percentage
+              </button>
+
+              <button
+                type="button"
+                class="mode-button"
+                data-calculator-mode="fraction"
+              >
+                Fraction
+              </button>
+
+              <button
+                type="button"
+                class="mode-button"
+                data-calculator-mode="conversion"
+              >
+                Conversion
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <!-- =================================================
+               ALGEBRA PANEL
+          ================================================== -->
+
+          <div
+            class="tool-panel"
+            id="panel-algebra"
+            data-panel="algebra"
+          >
+
+            <div class="panel-intro">
+
+              <span class="panel-icon">
+                x
+              </span>
+
+              <div>
+
+                <h3>
+                  Algebra
+                </h3>
+
+                <p>
+                  Solve equations without fighting the notation.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="algebra-mode-selector">
+
+              <button
+                type="button"
+                class="subtool-button active"
+                data-algebra-mode="linear"
+              >
+                Linear
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-algebra-mode="quadratic"
+              >
+                Quadratic
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-algebra-mode="simultaneous"
+              >
+                Simultaneous
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-algebra-mode="ratio"
+              >
+                Ratio
+              </button>
+
+            </div>
+
+
+            <div class="input-group">
+
+              <label for="algebraInput">
+                Equation
+              </label>
+
+              <input
+                type="text"
+                id="algebraInput"
+                class="main-input"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Example: 2x + 5 = 15"
+              >
+
+            </div>
+
+
+            <button
+              type="button"
+              class="primary-calculate-button"
+              id="solveAlgebra"
+            >
+              Solve equation
+              <span>→</span>
+            </button>
+
+
+            <div
+              class="answer-card"
+              id="algebraAnswer"
+              aria-live="polite"
+            >
+
+              <span class="answer-label">
+                SOLUTION
+              </span>
+
+              <div class="answer-value">
+                —
+              </div>
+
+              <div class="answer-formula"></div>
+
+              <div class="answer-steps"></div>
+
+            </div>
+
+          </div>
+
+
+          <!-- =================================================
+               GRAPH PANEL
+          ================================================== -->
+
+          <div
+            class="tool-panel"
+            id="panel-graph"
+            data-panel="graph"
+          >
+
+            <div class="panel-intro">
+
+              <span class="panel-icon">
+                ↗
+              </span>
+
+              <div>
+
+                <h3>
+                  Graphing
+                </h3>
+
+                <p>
+                  Turn equations into something you can actually see.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="input-group">
+
+              <label for="graphInput">
+                Function
+              </label>
+
+              <input
+                type="text"
+                id="graphInput"
+                class="main-input"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Example: y = x² + 2x + 1"
+              >
+
+            </div>
+
+
+            <div class="graph-options">
+
+              <button
+                type="button"
+                class="option-chip active"
+                data-graph-type="auto"
+              >
+                Auto
+              </button>
+
+              <button
+                type="button"
+                class="option-chip"
+                data-graph-type="linear"
+              >
+                Linear
+              </button>
+
+              <button
+                type="button"
+                class="option-chip"
+                data-graph-type="quadratic"
+              >
+                Quadratic
+              </button>
+
+              <button
+                type="button"
+                class="option-chip"
+                data-graph-type="trig"
+              >
+                Trigonometry
+              </button>
+
+            </div>
+
+
+            <button
+              type="button"
+              class="primary-calculate-button"
+              id="plotGraph"
+            >
+              Plot graph
+              <span>→</span>
+            </button>
+
+
+            <div
+              class="graph-display"
+              id="graphDisplay"
+            >
+
+              <div class="graph-empty-state">
+
+                <span class="graph-empty-icon">
+                  ∿
+                </span>
+
+                <p>
+                  Your graph will appear here.
+                </p>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <!-- =================================================
+               PHYSICS PANEL
+          ================================================== -->
+
+          <div
+            class="tool-panel"
+            id="panel-physics"
+            data-panel="physics"
+          >
+
+            <div class="panel-intro">
+
+              <span class="panel-icon">
+                φ
+              </span>
+
+              <div>
+
+                <h3>
+                  Physics
+                </h3>
+
+                <p>
+                  Give the known values. Novera handles the formula.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="physics-selector">
+
+              <button
+                type="button"
+                class="subtool-button active"
+                data-physics-mode="speed"
+              >
+                Speed
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-physics-mode="force"
+              >
+                Force
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-physics-mode="energy"
+              >
+                Energy
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-physics-mode="power"
+              >
+                Power
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-physics-mode="electricity"
+              >
+                Electricity
+              </button>
+
+            </div>
+
+
+            <div
+              class="dynamic-fields"
+              id="physicsFields"
+            >
+
+              <div class="input-group">
+
+                <label for="physicsDistance">
+                  Distance
+                </label>
+
+                <input
+                  type="number"
+                  id="physicsDistance"
+                  class="main-input"
+                  inputmode="decimal"
+                  placeholder="10"
+                >
+
+              </div>
+
+
+              <div class="input-group">
+
+                <label for="physicsTime">
+                  Time
+                </label>
+
+                <input
+                  type="number"
+                  id="physicsTime"
+                  class="main-input"
+                  inputmode="decimal"
+                  placeholder="2"
+                >
+
+              </div>
+
+            </div>
+
+
+            <button
+              type="button"
+              class="primary-calculate-button"
+              id="calculatePhysics"
+            >
+              Calculate
+              <span>→</span>
+            </button>
+
+
+            <div
+              class="answer-card"
+              id="physicsAnswer"
+              aria-live="polite"
+            >
+
+              <span class="answer-label">
+                RESULT
+              </span>
+
+              <div class="answer-value">
+                —
+              </div>
+
+              <div class="answer-unit"></div>
+
+              <div class="answer-formula"></div>
+
+              <div class="answer-steps"></div>
+
+            </div>
+
+          </div>
+
+
+          <!-- =================================================
+               CHEMISTRY PANEL
+          ================================================== -->
+
+          <div
+            class="tool-panel"
+            id="panel-chemistry"
+            data-panel="chemistry"
+          >
+
+            <div class="panel-intro">
+
+              <span class="panel-icon">
+                ◇
+              </span>
+
+              <div>
+
+                <h3>
+                  Chemistry
+                </h3>
+
+                <p>
+                  Chemistry calculations, without the messy setup.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="chemistry-selector">
+
+              <button
+                type="button"
+                class="subtool-button active"
+                data-chemistry-mode="moles"
+              >
+                Moles
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-chemistry-mode="molarity"
+              >
+                Molarity
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-chemistry-mode="gas"
+              >
+                Gas laws
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-chemistry-mode="ph"
+              >
+                pH
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-chemistry-mode="heat"
+              >
+                Heat
+              </button>
+
+            </div>
+
+
+            <div
+              class="dynamic-fields"
+              id="chemistryFields"
+            >
+
+              <div class="input-group">
+
+                <label for="chemistryValueOne">
+                  Mass
+                </label>
+
+                <input
+                  type="number"
+                  id="chemistryValueOne"
+                  class="main-input"
+                  inputmode="decimal"
+                  placeholder="10"
+                >
+
+              </div>
+
+
+              <div class="input-group">
+
+                <label for="chemistryValueTwo">
+                  Molar mass
+                </label>
+
+                <input
+                  type="number"
+                  id="chemistryValueTwo"
+                  class="main-input"
+                  inputmode="decimal"
+                  placeholder="18"
+                >
+
+              </div>
+
+            </div>
+
+
+            <button
+              type="button"
+              class="primary-calculate-button"
+              id="calculateChemistry"
+            >
+              Calculate
+              <span>→</span>
+            </button>
+
+
+            <div
+              class="answer-card"
+              id="chemistryAnswer"
+              aria-live="polite"
+            >
+
+              <span class="answer-label">
+                RESULT
+              </span>
+
+              <div class="answer-value">
+                —
+              </div>
+
+              <div class="answer-unit"></div>
+
+              <div class="answer-formula"></div>
+
+              <div class="answer-steps"></div>
+
+            </div>
+
+          </div>
+
+
+          <!-- =================================================
+               STATISTICS PANEL
+          ================================================== -->
+
+          <div
+            class="tool-panel"
+            id="panel-statistics"
+            data-panel="statistics"
+          >
+
+            <div class="panel-intro">
+
+              <span class="panel-icon">
+                ∑
+              </span>
+
+              <div>
+
+                <h3>
+                  Statistics
+                </h3>
+
+                <p>
+                  Paste your data. Novera finds the pattern.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="input-group">
+
+              <label for="statisticsInput">
+                Your data
+              </label>
+
+              <textarea
+                id="statisticsInput"
+                class="data-input"
+                rows="4"
+                spellcheck="false"
+                placeholder="Example: 12, 15, 18, 18, 20, 24"
+              ></textarea>
+
+              <span class="input-help">
+                Separate values with commas or spaces.
+              </span>
+
+            </div>
+
+
+            <div class="statistics-selector">
+
+              <button
+                type="button"
+                class="subtool-button active"
+                data-statistics-mode="mean"
+              >
+                Mean
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-statistics-mode="median"
+              >
+                Median
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-statistics-mode="mode"
+              >
+                Mode
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-statistics-mode="range"
+              >
+                Range
+              </button>
+
+              <button
+                type="button"
+                class="subtool-button"
+                data-statistics-mode="sd"
+              >
+                Std. deviation
+              </button>
+
+            </div>
+
+
+            <button
+              type="button"
+              class="primary-calculate-button"
+              id="calculateStatistics"
+            >
+              Analyse data
+              <span>→</span>
+            </button>
+
+
+            <div
+              class="answer-card"
+              id="statisticsAnswer"
+              aria-live="polite"
+            >
+
+              <span class="answer-label">
+                RESULT
+              </span>
+
+              <div class="answer-value">
+                —
+              </div>
+
+              <div class="answer-formula"></div>
+
+              <div class="answer-steps"></div>
+
+            </div>
+
+          </div>
+
+
+        </div>
+
+
+        <!-- =================================================
+             RECENT / HISTORY
+        ================================================== -->
+
+        <div
+          class="calculation-history"
+          id="calculationHistory"
+        >
+
+          <div class="history-header">
+
+            <div>
+
+              <span class="section-kicker">
+                HISTORY
+              </span>
+
+              <h3>
+                Recent calculations
+              </h3>
+
+            </div>
+
+            <button
+              type="button"
+              id="clearHistory"
+              class="text-button"
+            >
+              Clear history
+            </button>
+
+          </div>
+
+
+          <div
+            class="history-list"
+            id="historyList"
+          >
+
+            <div class="history-empty">
+              <span>◷</span>
+              <p>
+                Your recent calculations will appear here.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         SIMPLE PHILOSOPHY
+    ==================================================== -->
+
+    <section class="toolkit-philosophy">
+
+      <div class="philosophy-inner">
+
+        <span class="section-kicker">
+          THE NOVERA WAY
+        </span>
+
+        <h2>
+          Complex underneath.
+          <span>Easy on the surface.</span>
+        </h2>
+
+        <p>
+          No sign-up. No distractions. No unnecessary steps.
+          Just give Novera the numbers and get back to learning.
+        </p>
+
+      </div>
+
+    </section>
+
+
+  </main>
+
+
+  <!-- =====================================================
+       FOOTER
+  ====================================================== -->
+
+  <footer class="toolkit-footer">
+
+    <div class="footer-inner">
+
+      <div class="footer-brand">
+
+        <a
+          href="../index.html"
+          class="brand"
+        >
+
+          <span class="brand-symbol">
+            N
+          </span>
+
+          <span class="brand-text">
+            NOVERA
+          </span>
+
+        </a>
+
+        <p>
+          Best free resources.<br>
+          One beautiful place.
+        </p>
+
+      </div>
+
+
+      <div class="footer-links">
+
+        <a href="../index.html">
+          Novera Home
+        </a>
+
+        <a href="#tools">
+          Toolkit
+        </a>
+
+        <a href="mailto:novera.education@proton.me">
+          Contact
+        </a>
+
+        <a
+          href="https://wa.me/917699256003"
+          target="_blank"
+          rel="noopener"
+        >
+          WhatsApp
+        </a>
+
+      </div>
+
+
+      <div class="footer-bottom">
+
+        <span>
+          © 2026 Novera
+        </span>
+
+        <span>
+          Free to use
+        </span>
+
+      </div>
+
+    </div>
+
+  </footer>
+
+
+  <!-- =====================================================
+       TOOL ENGINES
+  ====================================================== -->
+
+  <script src="calculator.js"></script>
+  <script src="algebra.js"></script>
+  <script src="graph.js"></script>
+  <script src="physics.js"></script>
+  <script src="chemistry.js"></script>
+  <script src="statistics.js"></script>
+
+
+  <!-- =====================================================
+       TOOLKIT CONTROLLER
+  ====================================================== -->
+
+  <script src="toolkit.js"></script>
+
+
+</body>
+</html>
