@@ -1,1835 +1,2881 @@
 "use strict";
 
 /* =========================================================
-   NOVERA — MAIN APPLICATION CONTROLLER
+   NOVERA — MAIN APPLICATION
    Current live curriculum:
-   NCERT → Class 10
-
-   The actual Class 10 database is supplied by:
-   data/ncert/class10/index.js
-
-   That file must load BEFORE this file.
+   NCERT Class 10 only
 ========================================================= */
 
-(function () {
-  /* =======================================================
-     CONFIGURATION
-  ======================================================= */
 
-  const CONFIG = {
-    currentCurriculum: "ncert",
-    currentClass: "10",
-    contactEmail: "novera.education@proton.me",
-    whatsapp: "917699256003"
-  };
+/* =========================================================
+   GLOBAL STATE
+========================================================= */
 
-  /* =======================================================
-     STATE
-  ======================================================= */
+const NoveraState = {
 
-  const state = {
-    curriculum: null,
-    classLevel: null,
-    subject: null,
-    chapter: null,
-    concept: null,
+  curriculum: null,
 
-    bookmarks: [],
-    history: []
-  };
+  classLevel: null,
 
-  /* =======================================================
-     SAFE HELPERS
-  ======================================================= */
+  subject: null,
 
-  function $(selector, root = document) {
-    return root.querySelector(selector);
+  chapter: null,
+
+  concept: null,
+
+  bookmarks: loadBookmarks(),
+
+  history: loadHistory()
+
+};
+
+
+/* =========================================================
+   DATABASE
+========================================================= */
+
+function getClass10Database() {
+
+  if (
+    typeof window !== "undefined" &&
+    window.NCERT_CLASS_10
+  ) {
+    return window.NCERT_CLASS_10;
   }
 
-  function $$(selector, root = document) {
-    return Array.from(root.querySelectorAll(selector));
+  return null;
+}
+
+
+/* =========================================================
+   SMALL UTILITIES
+========================================================= */
+
+function escapeHTML(value) {
+
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+}
+
+
+function safeArray(value) {
+
+  return Array.isArray(value) ? value : [];
+
+}
+
+
+function slug(value) {
+
+  return String(value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+}
+
+
+function titleCase(value) {
+
+  return String(value ?? "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+
+}
+
+
+function firstExisting(object, keys, fallback = "") {
+
+  if (!object || typeof object !== "object") {
+    return fallback;
   }
 
-  function escapeHTML(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
+  for (const key of keys) {
 
-  function safeArray(value) {
-    return Array.isArray(value) ? value : [];
-  }
-
-  function slugify(value) {
-    return String(value || "")
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-  }
-
-  function getName(item, fallback = "Untitled") {
-    if (!item) return fallback;
-
-    return (
-      item.name ||
-      item.title ||
-      item.label ||
-      item.subjectName ||
-      item.chapterName ||
-      item.conceptName ||
-      fallback
-    );
-  }
-
-  function toast(message) {
-    let el = document.querySelector(".novera-toast");
-
-    if (!el) {
-      el = document.createElement("div");
-      el.className = "novera-toast";
-      document.body.appendChild(el);
-    }
-
-    el.textContent = message;
-    el.classList.add("show");
-
-    clearTimeout(el._timer);
-
-    el._timer = setTimeout(() => {
-      el.classList.remove("show");
-    }, 2600);
-  }
-
-  /* =======================================================
-     LOCAL STORAGE
-  ======================================================= */
-
-  const STORAGE_KEY = "novera_state_v1";
-
-  function loadSavedState() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-
-      if (!saved) return;
-
-      if (Array.isArray(saved.bookmarks)) {
-        state.bookmarks = saved.bookmarks;
-      }
-
-      if (Array.isArray(saved.history)) {
-        state.history = saved.history.slice(-30);
-      }
-    } catch (error) {
-      console.warn("Novera saved state could not be loaded.", error);
-    }
-  }
-
-  function saveState() {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          bookmarks: state.bookmarks,
-          history: state.history
-        })
-      );
-    } catch (error) {
-      console.warn("Novera state could not be saved.", error);
-    }
-  }
-
-  /* =======================================================
-     CLASS 10 DATABASE
-  ======================================================= */
-
-  function getClass10Database() {
     if (
-      typeof window.NCERT_CLASS_10 === "object" &&
-      window.NCERT_CLASS_10 !== null
+      object[key] !== undefined &&
+      object[key] !== null &&
+      object[key] !== ""
     ) {
-      return window.NCERT_CLASS_10;
+      return object[key];
     }
 
-    return null;
   }
 
-  /*
-    Your existing Class 10 database uses:
+  return fallback;
+}
 
-    {
-      math: {...},
-      science: {...},
-      english: {...},
-      socialScience: {...}
-    }
 
-    This function converts it into the navigation format
-    used by Novera.
-  */
+function normalizeSubjectName(subjectKey, subjectData) {
 
-  function convertClass10Database() {
-    const database = getClass10Database();
+  return firstExisting(
+    subjectData,
+    ["title", "name", "label", "subjectName"],
+    titleCase(subjectKey)
+  );
 
-    if (!database) {
-      console.warn(
-        "NCERT_CLASS_10 was not found. Check that data/ncert/class10/index.js loads before app.js."
+}
+
+
+function normalizeChapterName(chapter, index) {
+
+  if (typeof chapter === "string") {
+    return chapter;
+  }
+
+  return firstExisting(
+    chapter,
+    ["title", "name", "label", "chapterName"],
+    `Chapter ${index + 1}`
+  );
+
+}
+
+
+function normalizeConceptName(concept, index) {
+
+  if (typeof concept === "string") {
+    return concept;
+  }
+
+  return firstExisting(
+    concept,
+    ["title", "name", "label", "conceptName"],
+    `Concept ${index + 1}`
+  );
+
+}
+
+
+/* =========================================================
+   DATABASE NORMALIZATION
+
+   The Class 10 database can use:
+
+   subject
+     chapters
+       sections
+         concepts
+
+   or:
+
+   subject
+     chapters
+       concepts
+
+   This function makes both structures usable.
+========================================================= */
+
+function normalizeSubject(subjectKey, rawSubject) {
+
+  const subject = {
+    key: subjectKey,
+    name: normalizeSubjectName(subjectKey, rawSubject),
+    description: firstExisting(
+      rawSubject,
+      ["description", "subtitle", "intro"],
+      ""
+    ),
+    chapters: []
+  };
+
+
+  let rawChapters = [];
+
+
+  if (Array.isArray(rawSubject)) {
+
+    rawChapters = rawSubject;
+
+  } else if (rawSubject && Array.isArray(rawSubject.chapters)) {
+
+    rawChapters = rawSubject.chapters;
+
+  } else if (rawSubject && Array.isArray(rawSubject.units)) {
+
+    rawChapters = rawSubject.units;
+
+  }
+
+
+  rawChapters.forEach((rawChapter, chapterIndex) => {
+
+    const chapter = {
+
+      index: chapterIndex,
+
+      title: normalizeChapterName(
+        rawChapter,
+        chapterIndex
+      ),
+
+      description:
+        typeof rawChapter === "object"
+          ? firstExisting(
+              rawChapter,
+              ["description", "subtitle", "intro"],
+              ""
+            )
+          : "",
+
+      concepts: []
+
+    };
+
+
+    /*
+      Direct concepts
+    */
+
+    if (
+      rawChapter &&
+      typeof rawChapter === "object" &&
+      Array.isArray(rawChapter.concepts)
+    ) {
+
+      rawChapter.concepts.forEach(
+        (rawConcept, conceptIndex) => {
+
+          chapter.concepts.push(
+            normalizeConcept(
+              rawConcept,
+              conceptIndex
+            )
+          );
+
+        }
       );
 
-      return {};
     }
 
-    const subjects = {};
 
-    Object.keys(database).forEach((subjectKey) => {
-      const subject = database[subjectKey];
+    /*
+      Section-based concepts
+    */
 
-      if (!subject || typeof subject !== "object") {
-        return;
-      }
+    if (
+      rawChapter &&
+      typeof rawChapter === "object" &&
+      Array.isArray(rawChapter.sections)
+    ) {
 
-      const subjectTitle =
-        subject.title ||
-        subject.name ||
-        subject.label ||
-        formatSubjectName(subjectKey);
+      rawChapter.sections.forEach(
+        (section, sectionIndex) => {
 
-      let chapters = [];
-
-      /*
-        Some databases use:
-
-        chapters: [...]
-
-        Others may use:
-
-        books: [
-          {
-            chapters: [...]
-          }
-        ]
-      */
-
-      if (Array.isArray(subject.chapters)) {
-        chapters = subject.chapters;
-      }
-
-      if (Array.isArray(subject.books)) {
-        subject.books.forEach((book) => {
-          if (Array.isArray(book.chapters)) {
-            chapters.push(
-              ...book.chapters.map((chapter) => ({
-                ...chapter,
-                bookTitle:
-                  chapter.bookTitle ||
-                  book.title ||
-                  book.name ||
-                  book.label ||
-                  ""
-              }))
+          const sectionConcepts =
+            safeArray(
+              section && section.concepts
             );
-          }
-        });
-      }
 
-      /*
-        Normalize chapters and concepts.
-      */
 
-      chapters = chapters.map((chapter, chapterIndex) => {
-        const normalized = {
-          ...chapter,
+          sectionConcepts.forEach(
+            (rawConcept, conceptIndex) => {
 
-          id:
-            chapter.id ||
-            chapter.slug ||
-            `chapter-${chapterIndex + 1}`,
+              const normalized =
+                normalizeConcept(
+                  rawConcept,
+                  chapter.concepts.length
+                );
 
-          title:
-            chapter.title ||
-            chapter.name ||
-            chapter.label ||
-            `Chapter ${chapterIndex + 1}`,
 
-          concepts: []
-        };
+              normalized.section =
+                firstExisting(
+                  section,
+                  ["title", "name", "label"],
+                  `Section ${sectionIndex + 1}`
+                );
 
-        /*
-          Existing Class 10 database structure:
-          chapter.sections[].concepts[]
-        */
 
-        if (Array.isArray(chapter.concepts)) {
-          normalized.concepts.push(...chapter.concepts);
-        }
-
-        if (Array.isArray(chapter.sections)) {
-          chapter.sections.forEach((section) => {
-            if (Array.isArray(section.concepts)) {
-              normalized.concepts.push(
-                ...section.concepts.map((concept) => ({
-                  ...concept,
-                  sectionTitle:
-                    concept.sectionTitle ||
-                    section.title ||
-                    section.name ||
-                    ""
-                }))
+              chapter.concepts.push(
+                normalized
               );
+
             }
-          });
+          );
+
         }
+      );
 
-        /*
-          Remove duplicate concepts while preserving order.
-        */
+    }
 
-        const seen = new Set();
 
-        normalized.concepts = normalized.concepts.filter((concept, i) => {
-          const key =
-            concept.id ||
-            concept.slug ||
-            concept.title ||
-            concept.name ||
-            `concept-${i}`;
+    /*
+      If the chapter itself is a concept
+      collection in another supported shape.
+    */
 
-          if (seen.has(key)) return false;
+    if (
+      chapter.concepts.length === 0 &&
+      rawChapter &&
+      typeof rawChapter === "object" &&
+      Array.isArray(rawChapter.items)
+    ) {
 
-          seen.add(key);
-          return true;
-        });
+      rawChapter.items.forEach(
+        (item, itemIndex) => {
 
-        return normalized;
-      });
+          chapter.concepts.push(
+            normalizeConcept(
+              item,
+              itemIndex
+            )
+          );
 
-      /*
-        Some subjects may contain books but no direct chapters.
-        Keep books available as metadata.
-      */
+        }
+      );
 
-      subjects[subjectKey] = {
-        ...subject,
-        id: subjectKey,
-        title: subjectTitle,
-        chapters,
-        books: safeArray(subject.books)
-      };
-    });
+    }
 
-    return subjects;
-  }
 
-  function formatSubjectName(key) {
-    const names = {
-      math: "Mathematics",
-      mathematics: "Mathematics",
-      science: "Science",
-      english: "English",
-      hindi: "Hindi",
-      socialScience: "Social Science",
-      social_science: "Social Science",
-      socialscience: "Social Science"
-    };
+    subject.chapters.push(chapter);
 
-    return (
-      names[key] ||
-      String(key)
-        .replace(/([A-Z])/g, " $1")
-        .replace(/[_-]/g, " ")
-        .replace(/\b\w/g, (letter) => letter.toUpperCase())
-        .trim()
-    );
-  }
+  });
 
-  /* =======================================================
-     DATABASE ACCESS
-  ======================================================= */
 
-  function getSubjects() {
-    return convertClass10Database();
-  }
+  return subject;
 
-  function getSubject(subjectId) {
-    const subjects = getSubjects();
+}
 
-    return subjects[subjectId] || null;
-  }
 
-  function getChapter(subjectId, chapterId) {
-    const subject = getSubject(subjectId);
+function normalizeConcept(rawConcept, index) {
 
-    if (!subject) return null;
+  if (typeof rawConcept === "string") {
 
-    return (
-      subject.chapters.find(
-        (chapter) =>
-          String(chapter.id) === String(chapterId) ||
-          slugify(chapter.title) === slugify(chapterId)
-      ) || null
-    );
-  }
-
-  function getConcept(subjectId, chapterId, conceptId) {
-    const chapter = getChapter(subjectId, chapterId);
-
-    if (!chapter) return null;
-
-    return (
-      chapter.concepts.find(
-        (concept) =>
-          String(
-            concept.id ||
-              concept.slug ||
-              concept.title ||
-              concept.name
-          ) === String(conceptId) ||
-          slugify(
-            concept.title ||
-              concept.name ||
-              concept.label
-          ) === slugify(conceptId)
-      ) || null
-    );
-  }
-
-  /* =======================================================
-     NAVIGATION HISTORY
-  ======================================================= */
-
-  function snapshot() {
     return {
-      curriculum: state.curriculum,
-      classLevel: state.classLevel,
-      subject: state.subject,
-      chapter: state.chapter,
-      concept: state.concept
+
+      index,
+
+      title: rawConcept,
+
+      description: "",
+
+      resources: [],
+
+      practice: [],
+
+      revision: [],
+
+      videos: [],
+
+      official: []
+
     };
+
   }
 
-  function pushHistory() {
-    state.history.push(snapshot());
 
-    if (state.history.length > 30) {
-      state.history.shift();
-    }
+  const concept =
+    rawConcept && typeof rawConcept === "object"
+      ? rawConcept
+      : {};
 
-    saveState();
+
+  return {
+
+    index,
+
+    title: normalizeConceptName(
+      concept,
+      index
+    ),
+
+    description: firstExisting(
+      concept,
+      [
+        "description",
+        "summary",
+        "intro",
+        "overview"
+      ],
+      ""
+    ),
+
+    resources: safeArray(
+      firstExisting(
+        concept,
+        ["resources", "links", "materials"],
+        []
+      )
+    ),
+
+    practice: safeArray(
+      firstExisting(
+        concept,
+        ["practice", "questions", "practiceResources"],
+        []
+      )
+    ),
+
+    revision: safeArray(
+      firstExisting(
+        concept,
+        ["revision", "revisionResources"],
+        []
+      )
+    ),
+
+    videos: safeArray(
+      firstExisting(
+        concept,
+        ["videos", "videoResources", "teachingVideos"],
+        []
+      )
+    ),
+
+    official: safeArray(
+      firstExisting(
+        concept,
+        ["official", "officialResources", "pdfs"],
+        []
+      )
+    )
+
+  };
+
+}
+
+
+function getNormalizedClass10Subjects() {
+
+  const database = getClass10Database();
+
+  if (!database) {
+    return {};
   }
 
-  function restore(snapshotData) {
-    if (!snapshotData) return;
 
-    state.curriculum = snapshotData.curriculum || null;
-    state.classLevel = snapshotData.classLevel || null;
-    state.subject = snapshotData.subject || null;
-    state.chapter = snapshotData.chapter || null;
-    state.concept = snapshotData.concept || null;
-  }
+  const subjects = {};
 
-  function clearRoute() {
-    state.curriculum = null;
-    state.classLevel = null;
-    state.subject = null;
-    state.chapter = null;
-    state.concept = null;
-  }
 
-  function goBack() {
-    const previous = state.history.pop();
-
-    if (!previous) {
-      showHomepage();
-      return;
-    }
-
-    restore(previous);
-    saveState();
-
-    renderCurrentRoute();
-  }
-
-  /* =======================================================
-     PAGE ROOT
-  ======================================================= */
-
-  function removeDynamicPage() {
-    $$(".novera-dynamic-page").forEach((page) => page.remove());
-  }
-
-  function createPage() {
-    removeDynamicPage();
-
-    const page = document.createElement("main");
-
-    page.className =
-      "novera-v2-page novera-dynamic-page";
-
-    document.body.appendChild(page);
-
-    return page;
-  }
-
-  function scrollTop() {
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth"
-    });
-  }
-
-  /* =======================================================
-     HOMEPAGE
-  ======================================================= */
-
-  function showHomepage() {
-    clearRoute();
-    removeDynamicPage();
-
-    const home = document.querySelector("main:not(.novera-dynamic-page)");
-
-    if (home) {
-      home.style.display = "";
-    }
-
-    scrollTop();
-  }
-
-  function hideHomepage() {
-    const home = document.querySelector("main:not(.novera-dynamic-page)");
-
-    if (home) {
-      home.style.display = "none";
-    }
-  }
-
-  /* =======================================================
-     NCERT
-  ======================================================= */
-
-  function openNCERT() {
-    pushHistory();
-
-    state.curriculum = "ncert";
-    state.classLevel = "10";
-    state.subject = null;
-    state.chapter = null;
-    state.concept = null;
-
-    renderNCERTClass10();
-  }
-
-  function renderNCERTClass10() {
-    hideHomepage();
-
-    const page = createPage();
-
-    const subjects = getSubjects();
-
-    const subjectEntries = Object.entries(subjects);
-
-    page.innerHTML = `
-      <div class="novera-v2-inner">
-
-        <button class="novera-back-button" data-action="back">
-          ← Back
-        </button>
-
-        <div class="novera-v2-eyebrow">
-          NCERT · CLASS 10
-        </div>
-
-        <h1>Choose a subject.</h1>
-
-        <p class="novera-v2-intro">
-          Follow the curriculum from subject to chapter,
-          concept and carefully selected resources.
-        </p>
-
-        <div class="novera-v2-grid">
-          ${
-            subjectEntries.length
-              ? subjectEntries
-                  .map(([id, subject], index) => {
-                    const chapterCount = safeArray(
-                      subject.chapters
-                    ).length;
-
-                    return `
-                      <button
-                        class="novera-v2-card"
-                        data-subject="${escapeHTML(id)}"
-                        type="button"
-                      >
-                        <span class="novera-v2-number">
-                          ${String(index + 1).padStart(2, "0")}
-                        </span>
-
-                        <span class="novera-v2-card-content">
-                          <strong>
-                            ${escapeHTML(
-                              subject.title ||
-                                formatSubjectName(id)
-                            )}
-                          </strong>
-
-                          <small>
-                            ${chapterCount}
-                            ${
-                              chapterCount === 1
-                                ? "chapter"
-                                : "chapters"
-                            }
-                          </small>
-                        </span>
-
-                        <span class="novera-v2-arrow">
-                          →
-                        </span>
-                      </button>
-                    `;
-                  })
-                  .join("")
-              : `
-                <div class="novera-empty-state">
-                  <h2>Class 10 data could not be loaded.</h2>
-                  <p>
-                    Make sure the Class 10 database file loads
-                    before app.js.
-                  </p>
-                </div>
-              `
-          }
-        </div>
-
-      </div>
-    `;
-
-    bindPageActions(page);
-    scrollTop();
-  }
-
-  /* =======================================================
-     SUBJECT
-  ======================================================= */
-
-  function openSubject(subjectId) {
-    const subject = getSubject(subjectId);
-
-    if (!subject) {
-      toast("This subject could not be found.");
-      return;
-    }
-
-    pushHistory();
-
-    state.subject = subjectId;
-    state.chapter = null;
-    state.concept = null;
-
-    renderSubjectPage(subject);
-  }
-
-  function renderSubjectPage(subject) {
-    hideHomepage();
-
-    const page = createPage();
-
-    const chapters = safeArray(subject.chapters);
-
-    page.innerHTML = `
-      <div class="novera-v2-inner">
-
-        <button class="novera-back-button" data-action="back">
-          ← Subjects
-        </button>
-
-        <div class="novera-v2-eyebrow">
-          NCERT · CLASS 10
-        </div>
-
-        <h1>
-          ${escapeHTML(subject.title)}
-        </h1>
-
-        <p class="novera-v2-intro">
-          Choose a chapter to explore its concepts and resources.
-        </p>
-
-        <div class="novera-v2-grid">
-          ${
-            chapters.length
-              ? chapters
-                  .map((chapter, index) => {
-                    const concepts = safeArray(
-                      chapter.concepts
-                    );
-
-                    return `
-                      <button
-                        class="novera-v2-card"
-                        data-chapter="${escapeHTML(
-                          chapter.id ||
-                            slugify(chapter.title)
-                        )}"
-                        type="button"
-                      >
-
-                        <span class="novera-v2-number">
-                          ${String(index + 1).padStart(2, "0")}
-                        </span>
-
-                        <span class="novera-v2-card-content">
-
-                          <strong>
-                            ${escapeHTML(chapter.title)}
-                          </strong>
-
-                          <small>
-                            ${concepts.length}
-                            ${
-                              concepts.length === 1
-                                ? "concept"
-                                : "concepts"
-                            }
-                          </small>
-
-                        </span>
-
-                        <span class="novera-v2-arrow">
-                          →
-                        </span>
-
-                      </button>
-                    `;
-                  })
-                  .join("")
-              : `
-                <div class="novera-empty-state">
-                  <h2>No chapters available.</h2>
-                  <p>
-                    This subject does not currently contain
-                    chapter data.
-                  </p>
-                </div>
-              `
-          }
-        </div>
-
-      </div>
-    `;
-
-    bindPageActions(page);
-    scrollTop();
-  }
-
-  /* =======================================================
-     CHAPTER
-  ======================================================= */
-
-  function openChapter(chapterId) {
-    const chapter = getChapter(
-      state.subject,
-      chapterId
-    );
-
-    if (!chapter) {
-      toast("This chapter could not be found.");
-      return;
-    }
-
-    pushHistory();
-
-    state.chapter =
-      chapter.id || slugify(chapter.title);
-
-    state.concept = null;
-
-    renderChapterPage(chapter);
-  }
-
-  function renderChapterPage(chapter) {
-    hideHomepage();
-
-    const page = createPage();
-
-    const concepts = safeArray(chapter.concepts);
-
-    page.innerHTML = `
-      <div class="novera-v2-inner">
-
-        <button class="novera-back-button" data-action="back">
-          ← ${escapeHTML(
-            getName(getSubject(state.subject), "Subject")
-          )}
-        </button>
-
-        <div class="novera-v2-eyebrow">
-          CLASS 10 · CHAPTER
-        </div>
-
-        <h1>
-          ${escapeHTML(chapter.title)}
-        </h1>
-
-        <p class="novera-v2-intro">
-          Pick a concept. Each concept page brings together
-          learning resources and useful tools.
-        </p>
-
-        <div class="novera-v2-grid">
-          ${
-            concepts.length
-              ? concepts
-                  .map((concept, index) => {
-                    const conceptId =
-                      concept.id ||
-                      concept.slug ||
-                      slugify(
-                        concept.title ||
-                          concept.name ||
-                          `concept-${index + 1}`
-                      );
-
-                    return `
-                      <button
-                        class="novera-v2-card"
-                        data-concept="${escapeHTML(
-                          conceptId
-                        )}"
-                        type="button"
-                      >
-
-                        <span class="novera-v2-number">
-                          ${String(index + 1).padStart(2, "0")}
-                        </span>
-
-                        <span class="novera-v2-card-content">
-
-                          <strong>
-                            ${escapeHTML(
-                              concept.title ||
-                                concept.name ||
-                                concept.label ||
-                                `Concept ${index + 1}`
-                            )}
-                          </strong>
-
-                          ${
-                            concept.description
-                              ? `
-                                <small>
-                                  ${escapeHTML(
-                                    concept.description
-                                  )}
-                                </small>
-                              `
-                              : ""
-                          }
-
-                        </span>
-
-                        <span class="novera-v2-arrow">
-                          →
-                        </span>
-
-                      </button>
-                    `;
-                  })
-                  .join("")
-              : `
-                <div class="novera-empty-state">
-                  <h2>No concepts available.</h2>
-                  <p>
-                    This chapter currently has no concept entries.
-                  </p>
-                </div>
-              `
-          }
-        </div>
-
-      </div>
-    `;
-
-    bindPageActions(page);
-    scrollTop();
-  }
-
-  /* =======================================================
-     CONCEPT
-  ======================================================= */
-
-  function openConcept(conceptId) {
-    const concept = getConcept(
-      state.subject,
-      state.chapter,
-      conceptId
-    );
-
-    if (!concept) {
-      toast("This concept could not be found.");
-      return;
-    }
-
-    pushHistory();
-
-    state.concept =
-      concept.id ||
-      concept.slug ||
-      concept.title ||
-      concept.name;
-
-    renderConceptPage(concept);
-  }
-
-  function renderConceptPage(concept) {
-    hideHomepage();
-
-    const page = createPage();
-
-    const conceptTitle =
-      concept.title ||
-      concept.name ||
-      concept.label ||
-      "Concept";
-
-    const bookmarked = isBookmarked();
-
-    const resources = collectResources(concept);
-
-    page.innerHTML = `
-      <div class="novera-concept-page">
-
-        <div class="novera-concept-intro">
-
-          <button
-            class="novera-back-button"
-            data-action="back"
-          >
-            ← Back
-          </button>
-
-          <div class="novera-v2-eyebrow">
-            ${escapeHTML(
-              getName(
-                getSubject(state.subject),
-                "Subject"
-              )
-            )}
-            ·
-            ${escapeHTML(
-              getName(
-                getChapter(
-                  state.subject,
-                  state.chapter
-                ),
-                "Chapter"
-              )
-            )}
-          </div>
-
-          <h1>
-            ${escapeHTML(conceptTitle)}
-          </h1>
-
-          ${
-            concept.description
-              ? `
-                <p>
-                  ${escapeHTML(concept.description)}
-                </p>
-              `
-              : ""
-          }
-
-          <button
-            class="novera-bookmark-button ${
-              bookmarked ? "is-bookmarked" : ""
-            }"
-            data-action="bookmark"
-            type="button"
-          >
-            ${bookmarked ? "★ Bookmarked" : "☆ Bookmark"}
-          </button>
-
-        </div>
-
-        <div class="novera-resource-grid">
-
-          ${
-            resources.length
-              ? resources
-                  .map((resource) =>
-                    renderResource(resource)
-                  )
-                  .join("")
-              : `
-                <div class="novera-empty-state">
-                  <h2>No resources found.</h2>
-                  <p>
-                    This concept currently has no linked
-                    resources in the database.
-                  </p>
-                </div>
-              `
-          }
-
-        </div>
-
-      </div>
-    `;
-
-    bindPageActions(page);
-    scrollTop();
-  }
-
-  /* =======================================================
-     RESOURCE NORMALIZATION
-  ======================================================= */
-
-  function collectResources(concept) {
-    const resources = [];
-
-    function add(value, defaults = {}) {
-      if (!value) return;
-
-      if (Array.isArray(value)) {
-        value.forEach((item) => add(item, defaults));
-        return;
-      }
-
-      if (typeof value === "string") {
-        resources.push({
-          ...defaults,
-          title: defaults.title || "Open resource",
-          url: value
-        });
-
-        return;
-      }
-
-      if (typeof value === "object") {
-        const url =
-          value.url ||
-          value.href ||
-          value.link ||
-          value.pdf ||
-          value.video;
-
-        if (!url) return;
-
-        resources.push({
-          ...defaults,
-          ...value,
-          url
-        });
-      }
-    }
+  Object.keys(database).forEach(subjectKey => {
 
     /*
-      Common resource containers.
+      Ignore accidental metadata keys.
     */
 
-    add(concept.resources);
-
-    add(concept.videos, {
-      type: "video"
-    });
-
-    add(concept.video, {
-      type: "video"
-    });
-
-    add(concept.pdfs, {
-      type: "pdf"
-    });
-
-    add(concept.pdf, {
-      type: "pdf"
-    });
-
-    add(concept.practice, {
-      type: "practice"
-    });
-
-    add(concept.questionPapers, {
-      type: "paper"
-    });
-
-    add(concept.questionPapers, {
-      type: "paper"
-    });
-
-    add(concept.tools, {
-      type: "tool"
-    });
-
-    /*
-      Avoid duplicates.
-    */
-
-    const seen = new Set();
-
-    return resources.filter((resource) => {
-      const key =
-        String(resource.url) +
-        "|" +
-        String(resource.title || "");
-
-      if (seen.has(key)) return false;
-
-      seen.add(key);
-      return true;
-    });
-  }
-
-  function resourceIcon(resource) {
-    const type = String(
-      resource.type ||
-        resource.category ||
-        ""
-    ).toLowerCase();
-
-    if (type.includes("video")) return "▶";
-    if (type.includes("pdf")) return "▣";
-    if (type.includes("practice")) return "✎";
-    if (type.includes("paper")) return "◇";
-    if (type.includes("tool")) return "⌘";
-
-    return "↗";
-  }
-
-  function resourceTag(resource) {
-    const type = String(
-      resource.type ||
-        resource.category ||
-        ""
-    ).toLowerCase();
-
-    if (type.includes("video")) return "VIDEO";
-    if (type.includes("pdf")) return "PDF";
-    if (type.includes("practice")) return "PRACTICE";
-    if (type.includes("paper")) return "PAPER";
-    if (type.includes("tool")) return "TOOL";
-
-    return "RESOURCE";
-  }
-
-  function renderResource(resource) {
-    const title =
-      resource.title ||
-      resource.name ||
-      "Open resource";
-
-    const description =
-      resource.description ||
-      resource.note ||
-      "";
-
-    const source =
-      resource.source ||
-      resource.provider ||
-      resource.channel ||
-      "";
-
-    return `
-      <article class="novera-resource-item">
-
-        <div class="resource-item-top">
-
-          <span class="resource-item-icon">
-            ${resourceIcon(resource)}
-          </span>
-
-          <span class="resource-item-tag">
-            ${escapeHTML(
-              resourceTag(resource)
-            )}
-          </span>
-
-        </div>
-
-        <h2>
-          ${escapeHTML(title)}
-        </h2>
-
-        ${
-          description
-            ? `
-              <p>
-                ${escapeHTML(description)}
-              </p>
-            `
-            : ""
-        }
-
-        ${
-          source
-            ? `
-              <small>
-                ${escapeHTML(source)}
-              </small>
-            `
-            : ""
-        }
-
-        <button
-          class="novera-resource-button"
-          data-resource-url="${escapeHTML(
-            resource.url
-          )}"
-          type="button"
-        >
-          Open resource →
-        </button>
-
-      </article>
-    `;
-  }
-
-  /* =======================================================
-     BOOKMARKS
-  ======================================================= */
-
-  function bookmarkKey() {
-    return [
-      state.curriculum,
-      state.classLevel,
-      state.subject,
-      state.chapter,
-      state.concept
-    ]
-      .filter(Boolean)
-      .join("/");
-  }
-
-  function isBookmarked() {
-    const key = bookmarkKey();
-
-    return state.bookmarks.some(
-      (item) => item.key === key
-    );
-  }
-
-  function toggleBookmark() {
-    const key = bookmarkKey();
-
-    const index = state.bookmarks.findIndex(
-      (item) => item.key === key
-    );
-
-    if (index >= 0) {
-      state.bookmarks.splice(index, 1);
-      toast("Removed from bookmarks.");
-    } else {
-      state.bookmarks.push({
-        key,
-        curriculum: state.curriculum,
-        classLevel: state.classLevel,
-        subject: state.subject,
-        chapter: state.chapter,
-        concept: state.concept,
-        createdAt: Date.now()
-      });
-
-      toast("Bookmarked.");
+    if (
+      [
+        "class",
+        "classLevel",
+        "grade",
+        "title",
+        "name",
+        "description",
+        "metadata"
+      ].includes(subjectKey)
+    ) {
+      return;
     }
 
-    saveState();
 
-    const concept = getConcept(
-      state.subject,
-      state.chapter,
-      state.concept
-    );
+    const rawSubject =
+      database[subjectKey];
 
-    if (concept) {
-      renderConceptPage(concept);
-    }
-  }
 
-  /* =======================================================
-     WBBSE / WBCHSE
-  ======================================================= */
+    if (
+      rawSubject &&
+      typeof rawSubject === "object"
+    ) {
 
-  /*
-    These curricula are NOT built yet.
-
-    We do not fake a chapter database.
-
-    Instead, the buttons open a clean information page
-    explaining what is currently available.
-  */
-
-  function openUnavailableCurriculum(curriculum) {
-    pushHistory();
-
-    state.curriculum = curriculum;
-    state.classLevel = null;
-    state.subject = null;
-    state.chapter = null;
-    state.concept = null;
-
-    hideHomepage();
-
-    const page = createPage();
-
-    const title =
-      curriculum === "wbbse"
-        ? "West Bengal Board"
-        : "West Bengal Higher Secondary";
-
-    const short =
-      curriculum === "wbbse"
-        ? "WBBSE"
-        : "WBCHSE";
-
-    page.innerHTML = `
-      <div class="novera-v2-inner">
-
-        <button class="novera-back-button" data-action="back">
-          ← Back
-        </button>
-
-        <div class="novera-v2-eyebrow">
-          ${short}
-        </div>
-
-        <h1>
-          ${escapeHTML(title)}
-        </h1>
-
-        <p class="novera-v2-intro">
-          Novera currently has its full learning path
-          connected for NCERT Class 10.
-        </p>
-
-        <div class="novera-v2-grid">
-
-          <div class="novera-v2-card novera-static-card">
-            <span class="novera-v2-number">01</span>
-
-            <span class="novera-v2-card-content">
-              <strong>NCERT Class 10</strong>
-              <small>
-                Fully connected and ready to explore.
-              </small>
-            </span>
-          </div>
-
-          <div class="novera-v2-card novera-static-card">
-            <span class="novera-v2-number">02</span>
-
-            <span class="novera-v2-card-content">
-              <strong>Novera Toolkit</strong>
-              <small>
-                Free calculators and learning tools.
-              </small>
-            </span>
-          </div>
-
-        </div>
-
-      </div>
-    `;
-
-    bindPageActions(page);
-    scrollTop();
-  }
-
-  /* =======================================================
-     TOOLKIT
-  ======================================================= */
-
-  function openToolkit() {
-    window.location.href = "tools/";
-  }
-
-  /* =======================================================
-     HOMEPAGE CURRICULUM BUTTONS
-  ======================================================= */
-
-  function initCurriculumCards() {
-    $$(".curriculum-card").forEach((card) => {
-      card.addEventListener("click", (event) => {
-        event.preventDefault();
-
-        const curriculum =
-          card.dataset.curriculum ||
-          card.getAttribute("data-curriculum");
-
-        if (curriculum === "ncert") {
-          openNCERT();
-          return;
-        }
-
-        if (curriculum === "wbbse") {
-          openUnavailableCurriculum("wbbse");
-          return;
-        }
-
-        if (curriculum === "wbchse") {
-          openUnavailableCurriculum("wbchse");
-          return;
-        }
-      });
-    });
-  }
-
-  /* =======================================================
-     HOMEPAGE SUBJECT STRIP
-  ======================================================= */
-
-  function initSubjectCards() {
-    $$(".subject-item").forEach((item) => {
-      item.addEventListener("click", (event) => {
-        event.preventDefault();
-
-        /*
-          Subject strip on homepage now takes the user directly
-          into NCERT Class 10 and opens that subject if it exists.
-        */
-
-        const raw =
-          item.dataset.subject ||
-          item.dataset.subjectId ||
-          item.getAttribute("data-subject") ||
-          item.textContent ||
-          "";
-
-        const target = slugify(raw);
-
-        const subjects = getSubjects();
-
-        let subjectId = Object.keys(subjects).find(
-          (id) =>
-            id === raw ||
-            slugify(id) === target ||
-            slugify(subjects[id].title) === target
+      subjects[subjectKey] =
+        normalizeSubject(
+          subjectKey,
+          rawSubject
         );
 
-        if (!subjectId) {
-          /*
-            Common display names.
-          */
-
-          const aliases = {
-            mathematics: "math",
-            math: "math",
-            science: "science",
-            english: "english",
-            hindi: "hindi",
-            economics: "economics",
-            history: "history",
-            "social-science": "socialScience"
-          };
-
-          subjectId = aliases[target];
-        }
-
-        if (subjectId && subjects[subjectId]) {
-          pushHistory();
-
-          state.curriculum = "ncert";
-          state.classLevel = "10";
-          state.subject = subjectId;
-          state.chapter = null;
-          state.concept = null;
-
-          renderSubjectPage(subjects[subjectId]);
-        } else {
-          toast("This subject is not in the current Class 10 database.");
-        }
-      });
-    });
-  }
-
-  /* =======================================================
-     PAGE ACTIONS
-  ======================================================= */
-
-  function bindPageActions(root) {
-    $$("[data-action]", root).forEach((element) => {
-      element.addEventListener("click", (event) => {
-        event.preventDefault();
-
-        const action = element.dataset.action;
-
-        if (action === "back") {
-          goBack();
-          return;
-        }
-
-        if (action === "bookmark") {
-          toggleBookmark();
-          return;
-        }
-      });
-    });
-
-    $$("[data-subject]", root).forEach((element) => {
-      element.addEventListener("click", () => {
-        openSubject(element.dataset.subject);
-      });
-    });
-
-    $$("[data-chapter]", root).forEach((element) => {
-      element.addEventListener("click", () => {
-        openChapter(element.dataset.chapter);
-      });
-    });
-
-    $$("[data-concept]", root).forEach((element) => {
-      element.addEventListener("click", () => {
-        openConcept(element.dataset.concept);
-      });
-    });
-
-    $$("[data-resource-url]", root).forEach((element) => {
-      element.addEventListener("click", () => {
-        const url =
-          element.dataset.resourceUrl;
-
-        if (!url) {
-          toast("Resource link unavailable.");
-          return;
-        }
-
-        window.open(
-          url,
-          "_blank",
-          "noopener,noreferrer"
-        );
-      });
-    });
-  }
-
-  /* =======================================================
-     HEADER
-  ======================================================= */
-
-  function initHeader() {
-    const logo =
-      document.querySelector(
-        ".brand, .logo, .site-logo, [data-home]"
-      );
-
-    if (logo) {
-      logo.addEventListener("click", (event) => {
-        event.preventDefault();
-        showHomepage();
-      });
     }
 
-    $$("a").forEach((link) => {
-      const href =
-        link.getAttribute("href");
+  });
 
-      if (href === "#") {
-        link.addEventListener("click", (event) => {
-          event.preventDefault();
-        });
-      }
-    });
-  }
 
-  /* =======================================================
-     THEME
-  ======================================================= */
+  return subjects;
 
-  function initTheme() {
-    const button =
-      document.querySelector(
-        "#themeToggle, .theme-toggle, [data-theme-toggle]"
-      );
+}
 
-    if (!button) return;
+
+/* =========================================================
+   BOOKMARKS
+========================================================= */
+
+function loadBookmarks() {
+
+  try {
 
     const saved =
       localStorage.getItem(
-        "novera_theme"
+        "novera-bookmarks"
       );
 
-    if (saved === "light") {
-      document.body.classList.add("light-mode");
-    }
+    return saved
+      ? JSON.parse(saved)
+      : [];
 
-    button.addEventListener("click", () => {
-      document.body.classList.toggle(
-        "light-mode"
-      );
+  } catch (error) {
 
-      localStorage.setItem(
-        "novera_theme",
-        document.body.classList.contains(
-          "light-mode"
-        )
-          ? "light"
-          : "dark"
-      );
+    return [];
+
+  }
+
+}
+
+
+function saveBookmarks() {
+
+  try {
+
+    localStorage.setItem(
+      "novera-bookmarks",
+      JSON.stringify(
+        NoveraState.bookmarks
+      )
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Novera bookmarks could not be saved."
+    );
+
+  }
+
+}
+
+
+function bookmarkId(
+  subject,
+  chapter,
+  concept
+) {
+
+  return [
+    slug(subject),
+    slug(chapter),
+    slug(concept)
+  ].join("::");
+
+}
+
+
+function isBookmarked(
+  subject,
+  chapter,
+  concept
+) {
+
+  const id =
+    bookmarkId(
+      subject,
+      chapter,
+      concept
+    );
+
+  return NoveraState.bookmarks.some(
+    item => item.id === id
+  );
+
+}
+
+
+function toggleBookmark(
+  subject,
+  chapter,
+  concept
+) {
+
+  const id =
+    bookmarkId(
+      subject,
+      chapter,
+      concept
+    );
+
+
+  const existingIndex =
+    NoveraState.bookmarks.findIndex(
+      item => item.id === id
+    );
+
+
+  if (existingIndex >= 0) {
+
+    NoveraState.bookmarks.splice(
+      existingIndex,
+      1
+    );
+
+    showToast(
+      "Removed from bookmarks."
+    );
+
+  } else {
+
+    NoveraState.bookmarks.push({
+
+      id,
+
+      subject,
+
+      chapter,
+
+      concept,
+
+      savedAt:
+        Date.now()
+
     });
+
+    showToast(
+      "Saved to bookmarks."
+    );
+
   }
 
-  /* =======================================================
-     MOBILE MENU
-  ======================================================= */
 
-  function initMobileMenu() {
-    const toggle =
-      document.querySelector(
-        "#mobileMenuToggle, .mobile-menu-toggle, [data-menu-toggle]"
+  saveBookmarks();
+
+}
+
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+function loadHistory() {
+
+  try {
+
+    const saved =
+      localStorage.getItem(
+        "novera-history"
       );
 
-    const menu =
-      document.querySelector(
-        "#mobileMenu, .mobile-menu, [data-mobile-menu]"
-      );
+    return saved
+      ? JSON.parse(saved)
+      : [];
 
-    if (!toggle || !menu) return;
+  } catch (error) {
 
-    toggle.addEventListener("click", () => {
-      menu.classList.toggle("is-open");
-      toggle.classList.toggle("is-open");
-    });
+    return [];
+
   }
 
-  /* =======================================================
-     REVEAL ANIMATIONS
-  ======================================================= */
+}
 
-  function initReveal() {
-    const elements =
-      $$(".reveal, .reveal-on-scroll");
 
-    if (!elements.length) return;
+function saveHistory() {
 
-    if (!("IntersectionObserver" in window)) {
-      elements.forEach((element) => {
-        element.classList.add("revealed");
-      });
+  try {
 
-      return;
-    }
+    localStorage.setItem(
+      "novera-history",
+      JSON.stringify(
+        NoveraState.history
+      )
+    );
 
-    const observer =
-      new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add(
-                "revealed"
-              );
+  } catch (error) {
 
-              observer.unobserve(
-                entry.target
-              );
-            }
-          });
-        },
-        {
-          threshold: 0.12
-        }
-      );
+    console.warn(
+      "Novera history could not be saved."
+    );
 
-    elements.forEach((element) => {
-      observer.observe(element);
-    });
   }
 
-  /* =======================================================
-     SMOOTH ANCHORS
-  ======================================================= */
+}
 
-  function initSmoothLinks() {
-    $$('a[href^="#"]').forEach((link) => {
-      link.addEventListener("click", (event) => {
-        const href =
-          link.getAttribute("href");
 
-        if (!href || href === "#") {
-          return;
-        }
+function addHistory(
+  subject,
+  chapter,
+  concept
+) {
 
-        const target =
-          document.querySelector(href);
+  const item = {
 
-        if (!target) return;
+    subject,
 
-        event.preventDefault();
+    chapter,
 
-        target.scrollIntoView({
-          behavior: "smooth",
-          block: "start"
-        });
-      });
-    });
-  }
+    concept,
 
-  /* =======================================================
-     ROUTE RENDERING
-  ======================================================= */
+    time: Date.now()
 
-  function renderCurrentRoute() {
-    if (!state.curriculum) {
-      showHomepage();
-      return;
-    }
-
-    if (state.curriculum === "ncert") {
-      if (!state.subject) {
-        renderNCERTClass10();
-        return;
-      }
-
-      if (!state.chapter) {
-        const subject =
-          getSubject(state.subject);
-
-        if (subject) {
-          renderSubjectPage(subject);
-        } else {
-          renderNCERTClass10();
-        }
-
-        return;
-      }
-
-      if (!state.concept) {
-        const chapter =
-          getChapter(
-            state.subject,
-            state.chapter
-          );
-
-        if (chapter) {
-          renderChapterPage(chapter);
-        } else {
-          const subject =
-            getSubject(state.subject);
-
-          if (subject) {
-            renderSubjectPage(subject);
-          } else {
-            renderNCERTClass10();
-          }
-        }
-
-        return;
-      }
-
-      const concept =
-        getConcept(
-          state.subject,
-          state.chapter,
-          state.concept
-        );
-
-      if (concept) {
-        renderConceptPage(concept);
-      } else {
-        renderChapterPage(
-          getChapter(
-            state.subject,
-            state.chapter
-          )
-        );
-      }
-
-      return;
-    }
-
-    if (
-      state.curriculum === "wbbse" ||
-      state.curriculum === "wbchse"
-    ) {
-      openUnavailableCurriculum(
-        state.curriculum
-      );
-    }
-  }
-
-  /* =======================================================
-     GLOBAL PUBLIC API
-  ======================================================= */
-
-  window.NOVERA = {
-    state,
-
-    openNCERT,
-    openSubject,
-    openChapter,
-    openConcept,
-    openToolkit,
-
-    goBack,
-    showHomepage,
-
-    getSubjects,
-    getSubject,
-    getChapter,
-    getConcept,
-
-    bookmark: toggleBookmark,
-
-    toast
   };
 
-  /* =======================================================
-     INITIALIZATION
-  ======================================================= */
 
-  function init() {
-    loadSavedState();
+  NoveraState.history =
+    NoveraState.history.filter(
+      entry =>
+        !(
+          entry.subject === subject &&
+          entry.chapter === chapter &&
+          entry.concept === concept
+        )
+    );
 
-    initCurriculumCards();
-    initSubjectCards();
 
-    initHeader();
-    initTheme();
-    initMobileMenu();
-    initReveal();
-    initSmoothLinks();
+  NoveraState.history.unshift(
+    item
+  );
 
-    /*
-      Toolkit button support.
-    */
 
-    $$(
-      '[data-toolkit], .toolkit-link, a[href="tools/"]'
-    ).forEach((element) => {
-      element.addEventListener("click", (event) => {
-        /*
-          Let a normal tools/ link work naturally.
-          Only prevent it when explicitly using data-toolkit.
-        */
+  NoveraState.history =
+    NoveraState.history.slice(
+      0,
+      30
+    );
 
-        if (
-          element.hasAttribute("data-toolkit")
-        ) {
-          event.preventDefault();
-          openToolkit();
+
+  saveHistory();
+
+}
+
+
+/* =========================================================
+   TOAST
+========================================================= */
+
+function showToast(message) {
+
+  let toast =
+    document.getElementById(
+      "noveraToast"
+    );
+
+
+  if (!toast) {
+
+    toast =
+      document.createElement(
+        "div"
+      );
+
+    toast.id =
+      "noveraToast";
+
+    toast.style.position =
+      "fixed";
+
+    toast.style.left =
+      "50%";
+
+    toast.style.bottom =
+      "24px";
+
+    toast.style.transform =
+      "translateX(-50%) translateY(20px)";
+
+    toast.style.padding =
+      "12px 18px";
+
+    toast.style.borderRadius =
+      "999px";
+
+    toast.style.background =
+      "rgba(15,15,15,.94)";
+
+    toast.style.color =
+      "#fff";
+
+    toast.style.fontSize =
+      "14px";
+
+    toast.style.zIndex =
+      "99999";
+
+    toast.style.opacity =
+      "0";
+
+    toast.style.pointerEvents =
+      "none";
+
+    toast.style.transition =
+      "opacity .25s ease, transform .25s ease";
+
+    document.body.appendChild(
+      toast
+    );
+
+  }
+
+
+  toast.textContent =
+    message;
+
+
+  requestAnimationFrame(() => {
+
+    toast.style.opacity =
+      "1";
+
+    toast.style.transform =
+      "translateX(-50%) translateY(0)";
+
+  });
+
+
+  clearTimeout(
+    toast._timer
+  );
+
+
+  toast._timer =
+    setTimeout(() => {
+
+      toast.style.opacity =
+        "0";
+
+      toast.style.transform =
+        "translateX(-50%) translateY(20px)";
+
+    }, 2200);
+
+}
+
+
+/* =========================================================
+   PAGE MANAGEMENT
+========================================================= */
+
+function getHomepage() {
+
+  return document.getElementById(
+    "homepage"
+  );
+
+}
+
+
+function getDynamicPage() {
+
+  return document.querySelector(
+    ".novera-dynamic-page"
+  );
+
+}
+
+
+function hideHomepage() {
+
+  const homepage =
+    getHomepage();
+
+  if (homepage) {
+
+    homepage.style.display =
+      "none";
+
+  }
+
+}
+
+
+function showHomepage() {
+
+  const homepage =
+    getHomepage();
+
+  const dynamic =
+    getDynamicPage();
+
+
+  if (dynamic) {
+
+    dynamic.remove();
+
+  }
+
+
+  if (homepage) {
+
+    homepage.style.display =
+      "";
+
+  }
+
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+function createDynamicPage() {
+
+  const existing =
+    getDynamicPage();
+
+
+  if (existing) {
+
+    existing.remove();
+
+  }
+
+
+  const page =
+    document.createElement(
+      "main"
+    );
+
+
+  page.className =
+    "novera-dynamic-page novera-v2-page";
+
+
+  document.body.appendChild(
+    page
+  );
+
+
+  return page;
+
+}
+
+
+function createBackButton() {
+
+  const button =
+    document.createElement(
+      "button"
+    );
+
+
+  button.type =
+    "button";
+
+  button.className =
+    "novera-back-button";
+
+  button.innerHTML =
+    "← Back";
+
+  button.addEventListener(
+    "click",
+    goBack
+  );
+
+
+  return button;
+
+}
+
+
+function goBack() {
+
+  const dynamic =
+    getDynamicPage();
+
+
+  if (!dynamic) {
+
+    return;
+
+  }
+
+
+  if (
+    NoveraState.concept
+  ) {
+
+    NoveraState.concept =
+      null;
+
+    renderChapterPage();
+
+    return;
+
+  }
+
+
+  if (
+    NoveraState.chapter
+  ) {
+
+    NoveraState.chapter =
+      null;
+
+    renderSubjectPage();
+
+    return;
+
+  }
+
+
+  if (
+    NoveraState.subject
+  ) {
+
+    NoveraState.subject =
+      null;
+
+    renderClassPage();
+
+    return;
+
+  }
+
+
+  if (
+    NoveraState.classLevel
+  ) {
+
+    NoveraState.classLevel =
+      null;
+
+    renderCurriculumPage();
+
+    return;
+
+  }
+
+
+  NoveraState.curriculum =
+    null;
+
+  showHomepage();
+
+}
+
+
+/* =========================================================
+   CURRICULUM
+========================================================= */
+
+function openCurriculum(
+  curriculum
+) {
+
+  NoveraState.curriculum =
+    curriculum;
+
+
+  NoveraState.classLevel =
+    null;
+
+  NoveraState.subject =
+    null;
+
+  NoveraState.chapter =
+    null;
+
+  NoveraState.concept =
+    null;
+
+
+  if (
+    curriculum === "ncert"
+  ) {
+
+    openNCERT();
+
+    return;
+
+  }
+
+
+  /*
+    WBBSE and WBCHSE are not
+    falsely presented as available.
+  */
+
+  renderUnavailableCurriculum(
+    curriculum
+  );
+
+}
+
+
+function renderUnavailableCurriculum(
+  curriculum
+) {
+
+  const page =
+    createDynamicPage();
+
+
+  page.appendChild(
+    createBackButton()
+  );
+
+
+  const title =
+    curriculum === "wbbse"
+      ? "West Bengal Board"
+      : "West Bengal Higher Secondary";
+
+
+  const code =
+    curriculum === "wbbse"
+      ? "WBBSE"
+      : "WBCHSE";
+
+
+  page.innerHTML += `
+
+    <div class="novera-v2-inner">
+
+      <div class="novera-v2-eyebrow">
+        ${escapeHTML(code)}
+      </div>
+
+      <h1 class="novera-v2-title">
+        ${escapeHTML(title)}
+      </h1>
+
+      <p class="novera-v2-description">
+        Novera is currently focused on its
+        NCERT Class 10 learning path.
+        This curriculum will be added only
+        when its resources are properly built
+        and verified.
+      </p>
+
+      <div class="novera-v2-grid">
+
+        <div class="novera-v2-card">
+
+          <div class="novera-v2-number">
+            01
+          </div>
+
+          <div class="card-content">
+
+            <h3>
+              Currently unavailable
+            </h3>
+
+            <p>
+              No empty or placeholder learning
+              content is shown here.
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+/* =========================================================
+   NCERT
+========================================================= */
+
+function openNCERT() {
+
+  const database =
+    getClass10Database();
+
+
+  if (!database) {
+
+    showToast(
+      "NCERT Class 10 data could not be loaded."
+    );
+
+    return;
+
+  }
+
+
+  NoveraState.classLevel =
+    "10";
+
+
+  renderClassPage();
+
+}
+
+
+function renderCurriculumPage() {
+
+  const page =
+    createDynamicPage();
+
+
+  page.appendChild(
+    createBackButton()
+  );
+
+
+  page.innerHTML += `
+
+    <div class="novera-v2-inner">
+
+      <div class="novera-v2-eyebrow">
+        NCERT
+      </div>
+
+      <h1 class="novera-v2-title">
+        Choose your class.
+      </h1>
+
+      <p class="novera-v2-description">
+        Select the class you want to explore.
+      </p>
+
+      <div class="novera-v2-grid">
+
+        <button
+          type="button"
+          class="novera-v2-card novera-class-card"
+          data-class="10"
+        >
+
+          <div class="novera-v2-number">
+            01
+          </div>
+
+          <div class="card-content">
+
+            <h3>
+              Class 10
+            </h3>
+
+            <p>
+              NCERT learning resources
+            </p>
+
+          </div>
+
+          <div class="novera-v2-arrow">
+            ↗
+          </div>
+
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  const classButton =
+    page.querySelector(
+      ".novera-class-card"
+    );
+
+
+  if (classButton) {
+
+    classButton.addEventListener(
+      "click",
+      () => {
+
+        NoveraState.classLevel =
+          "10";
+
+        renderClassPage();
+
+      }
+    );
+
+  }
+
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+/* =========================================================
+   CLASS PAGE
+========================================================= */
+
+function renderClassPage() {
+
+  const page =
+    createDynamicPage();
+
+
+  page.appendChild(
+    createBackButton()
+  );
+
+
+  const subjects =
+    getNormalizedClass10Subjects();
+
+
+  const subjectKeys =
+    Object.keys(subjects);
+
+
+  let cards = "";
+
+
+  subjectKeys.forEach(
+    (subjectKey, index) => {
+
+      const subject =
+        subjects[subjectKey];
+
+
+      cards += `
+
+        <button
+          type="button"
+          class="novera-v2-card novera-subject-card"
+          data-subject="${escapeHTML(subjectKey)}"
+        >
+
+          <div class="novera-v2-number">
+            ${String(index + 1).padStart(2, "0")}
+          </div>
+
+          <div class="card-content">
+
+            <h3>
+              ${escapeHTML(subject.name)}
+            </h3>
+
+            <p>
+              ${subject.chapters.length}
+              ${
+                subject.chapters.length === 1
+                  ? "chapter"
+                  : "chapters"
+              }
+            </p>
+
+          </div>
+
+          <div class="novera-v2-arrow">
+            ↗
+          </div>
+
+        </button>
+
+      `;
+
+    }
+  );
+
+
+  page.innerHTML += `
+
+    <div class="novera-v2-inner">
+
+      <div class="novera-v2-eyebrow">
+        NCERT · CLASS 10
+      </div>
+
+      <h1 class="novera-v2-title">
+        Choose a subject.
+      </h1>
+
+      <p class="novera-v2-description">
+        Start with a subject, then move
+        chapter by chapter until you reach
+        the exact concept you need.
+      </p>
+
+      <div class="novera-v2-grid">
+
+        ${
+          cards ||
+          `
+            <div class="novera-v2-card">
+
+              <div class="card-content">
+
+                <h3>
+                  No subjects found
+                </h3>
+
+                <p>
+                  The Class 10 database is empty
+                  or could not be read.
+                </p>
+
+              </div>
+
+            </div>
+          `
         }
-      });
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  page
+    .querySelectorAll(
+      ".novera-subject-card"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          const key =
+            button.dataset.subject;
+
+
+          NoveraState.subject =
+            key;
+
+          NoveraState.chapter =
+            null;
+
+          NoveraState.concept =
+            null;
+
+
+          renderSubjectPage();
+
+        }
+      );
+
     });
 
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+/* =========================================================
+   SUBJECT PAGE
+========================================================= */
+
+function renderSubjectPage() {
+
+  const page =
+    createDynamicPage();
+
+
+  page.appendChild(
+    createBackButton()
+  );
+
+
+  const subjects =
+    getNormalizedClass10Subjects();
+
+
+  const subject =
+    subjects[
+      NoveraState.subject
+    ];
+
+
+  if (!subject) {
+
+    page.innerHTML += `
+
+      <div class="novera-v2-inner">
+
+        <h1 class="novera-v2-title">
+          Subject not found.
+        </h1>
+
+        <p class="novera-v2-description">
+          This subject does not exist in the
+          current Class 10 database.
+        </p>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  let cards = "";
+
+
+  subject.chapters.forEach(
+    (chapter, index) => {
+
+      cards += `
+
+        <button
+          type="button"
+          class="novera-v2-card novera-chapter-card"
+          data-chapter="${index}"
+        >
+
+          <div class="novera-v2-number">
+            ${String(index + 1).padStart(2, "0")}
+          </div>
+
+          <div class="card-content">
+
+            <h3>
+              ${escapeHTML(chapter.title)}
+            </h3>
+
+            <p>
+              ${chapter.concepts.length}
+              ${
+                chapter.concepts.length === 1
+                  ? "concept"
+                  : "concepts"
+              }
+            </p>
+
+          </div>
+
+          <div class="novera-v2-arrow">
+            ↗
+          </div>
+
+        </button>
+
+      `;
+
+    }
+  );
+
+
+  page.innerHTML += `
+
+    <div class="novera-v2-inner">
+
+      <div class="novera-v2-eyebrow">
+        NCERT · CLASS 10 ·
+        ${escapeHTML(subject.name)}
+      </div>
+
+      <h1 class="novera-v2-title">
+        Choose a chapter.
+      </h1>
+
+      <p class="novera-v2-description">
+        Every chapter leads to its individual
+        concepts and learning resources.
+      </p>
+
+      <div class="novera-v2-grid">
+
+        ${
+          cards ||
+          `
+            <div class="novera-v2-card">
+
+              <div class="card-content">
+
+                <h3>
+                  No chapters found
+                </h3>
+
+                <p>
+                  This subject has no chapter
+                  data yet.
+                </p>
+
+              </div>
+
+            </div>
+          `
+        }
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  page
+    .querySelectorAll(
+      ".novera-chapter-card"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          NoveraState.chapter =
+            Number(
+              button.dataset.chapter
+            );
+
+          NoveraState.concept =
+            null;
+
+
+          renderChapterPage();
+
+        }
+      );
+
+    });
+
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+/* =========================================================
+   CHAPTER PAGE
+========================================================= */
+
+function renderChapterPage() {
+
+  const page =
+    createDynamicPage();
+
+
+  page.appendChild(
+    createBackButton()
+  );
+
+
+  const subjects =
+    getNormalizedClass10Subjects();
+
+
+  const subject =
+    subjects[
+      NoveraState.subject
+    ];
+
+
+  const chapter =
+    subject &&
+    subject.chapters[
+      NoveraState.chapter
+    ];
+
+
+  if (!subject || !chapter) {
+
+    page.innerHTML += `
+
+      <div class="novera-v2-inner">
+
+        <h1 class="novera-v2-title">
+          Chapter not found.
+        </h1>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  let cards = "";
+
+
+  chapter.concepts.forEach(
+    (concept, index) => {
+
+      cards += `
+
+        <button
+          type="button"
+          class="novera-v2-card novera-concept-card"
+          data-concept="${index}"
+        >
+
+          <div class="novera-v2-number">
+            ${String(index + 1).padStart(2, "0")}
+          </div>
+
+          <div class="card-content">
+
+            ${
+              concept.section
+                ? `
+                  <small>
+                    ${escapeHTML(concept.section)}
+                  </small>
+                `
+                : ""
+            }
+
+            <h3>
+              ${escapeHTML(concept.title)}
+            </h3>
+
+            <p>
+              Explore learning resources
+            </p>
+
+          </div>
+
+          <div class="novera-v2-arrow">
+            ↗
+          </div>
+
+        </button>
+
+      `;
+
+    }
+  );
+
+
+  page.innerHTML += `
+
+    <div class="novera-v2-inner">
+
+      <div class="novera-v2-eyebrow">
+        ${escapeHTML(subject.name)}
+      </div>
+
+      <h1 class="novera-v2-title">
+        ${escapeHTML(chapter.title)}
+      </h1>
+
+      <p class="novera-v2-description">
+        Choose a concept to find the resources
+        that help you learn it.
+      </p>
+
+      <div class="novera-v2-grid">
+
+        ${
+          cards ||
+          `
+            <div class="novera-v2-card">
+
+              <div class="card-content">
+
+                <h3>
+                  No concepts found
+                </h3>
+
+                <p>
+                  This chapter currently has
+                  no concept data.
+                </p>
+
+              </div>
+
+            </div>
+          `
+        }
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  page
+    .querySelectorAll(
+      ".novera-concept-card"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          NoveraState.concept =
+            Number(
+              button.dataset.concept
+            );
+
+
+          const concept =
+            chapter.concepts[
+              NoveraState.concept
+            ];
+
+
+          addHistory(
+            subject.name,
+            chapter.title,
+            concept.title
+          );
+
+
+          renderConceptPage();
+
+        }
+      );
+
+    });
+
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+/* =========================================================
+   CONCEPT PAGE
+========================================================= */
+
+function renderConceptPage() {
+
+  const page =
+    createDynamicPage();
+
+
+  page.appendChild(
+    createBackButton()
+  );
+
+
+  const subjects =
+    getNormalizedClass10Subjects();
+
+
+  const subject =
+    subjects[
+      NoveraState.subject
+    ];
+
+
+  const chapter =
+    subject &&
+    subject.chapters[
+      NoveraState.chapter
+    ];
+
+
+  const concept =
+    chapter &&
+    chapter.concepts[
+      NoveraState.concept
+    ];
+
+
+  if (
+    !subject ||
+    !chapter ||
+    !concept
+  ) {
+
+    page.innerHTML += `
+
+      <div class="novera-v2-inner">
+
+        <h1 class="novera-v2-title">
+          Concept not found.
+        </h1>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  const bookmarked =
+    isBookmarked(
+      subject.name,
+      chapter.title,
+      concept.title
+    );
+
+
+  const allResources =
+    collectResources(
+      concept
+    );
+
+
+  page.innerHTML += `
+
+    <div class="novera-v2-inner novera-concept-page">
+
+      <div class="novera-concept-intro">
+
+        <div class="novera-v2-eyebrow">
+          ${escapeHTML(subject.name)}
+          ·
+          ${escapeHTML(chapter.title)}
+        </div>
+
+        <h1 class="novera-v2-title">
+          ${escapeHTML(concept.title)}
+        </h1>
+
+        ${
+          concept.description
+            ? `
+              <p class="novera-v2-description">
+                ${escapeHTML(
+                  concept.description
+                )}
+              </p>
+            `
+            : `
+              <p class="novera-v2-description">
+                Learn the concept through
+                carefully selected free resources.
+              </p>
+            `
+        }
+
+        <button
+          type="button"
+          class="novera-bookmark-button"
+          id="conceptBookmark"
+        >
+          ${
+            bookmarked
+              ? "★ Saved"
+              : "☆ Save this concept"
+          }
+        </button>
+
+      </div>
+
+
+      <div class="novera-resource-grid">
+
+        ${
+          allResources.length
+            ? allResources
+                .map(
+                  resource =>
+                    renderResource(
+                      resource
+                    )
+                )
+                .join("")
+            : `
+              <div class="novera-resource-item">
+
+                <div class="resource-item-top">
+
+                  <span class="resource-item-icon">
+                    ○
+                  </span>
+
+                  <span class="resource-item-tag">
+                    RESOURCE
+                  </span>
+
+                </div>
+
+                <h3>
+                  Resources are being curated
+                </h3>
+
+                <p>
+                  This concept is present in the
+                  curriculum database, but resources
+                  have not been added yet.
+                </p>
+
+              </div>
+            `
+        }
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  const bookmarkButton =
+    page.querySelector(
+      "#conceptBookmark"
+    );
+
+
+  if (bookmarkButton) {
+
+    bookmarkButton.addEventListener(
+      "click",
+      () => {
+
+        toggleBookmark(
+          subject.name,
+          chapter.title,
+          concept.title
+        );
+
+
+        renderConceptPage();
+
+      }
+    );
+
+  }
+
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+
+/* =========================================================
+   RESOURCE COLLECTION
+========================================================= */
+
+function collectResources(
+  concept
+) {
+
+  const result = [];
+
+
+  function addMany(
+    items,
+    type,
+    icon,
+    label
+  ) {
+
+    safeArray(items).forEach(
+      item => {
+
+        if (
+          typeof item === "string"
+        ) {
+
+          result.push({
+
+            title: item,
+
+            url: item,
+
+            type,
+
+            icon,
+
+            label
+
+          });
+
+          return;
+
+        }
+
+
+        if (
+          !item ||
+          typeof item !== "object"
+        ) {
+
+          return;
+
+        }
+
+
+        const url =
+          firstExisting(
+            item,
+            [
+              "url",
+              "link",
+              "href"
+            ],
+            ""
+          );
+
+
+        if (!url) {
+
+          return;
+
+        }
+
+
+        result.push({
+
+          title:
+            firstExisting(
+              item,
+              [
+                "title",
+                "name",
+                "label"
+              ],
+              "Open resource"
+            ),
+
+          description:
+            firstExisting(
+              item,
+              [
+                "description",
+                "summary"
+              ],
+              ""
+            ),
+
+          url,
+
+          type,
+
+          icon,
+
+          label
+
+        });
+
+      }
+    );
+
+  }
+
+
+  addMany(
+    concept.official,
+    "official",
+    "▣",
+    "OFFICIAL"
+  );
+
+
+  addMany(
+    concept.videos,
+    "video",
+    "▶",
+    "TEACHING"
+  );
+
+
+  addMany(
+    concept.resources,
+    "resource",
+    "↗",
+    "RESOURCE"
+  );
+
+
+  addMany(
+    concept.practice,
+    "practice",
+    "✓",
+    "PRACTICE"
+  );
+
+
+  addMany(
+    concept.revision,
+    "revision",
+    "↻",
+    "REVISION"
+  );
+
+
+  return result;
+
+}
+
+
+/* =========================================================
+   RESOURCE RENDERER
+========================================================= */
+
+function renderResource(
+  resource
+) {
+
+  return `
+
+    <div class="novera-resource-item">
+
+      <div class="resource-item-top">
+
+        <span class="resource-item-icon">
+          ${escapeHTML(resource.icon)}
+        </span>
+
+        <span class="resource-item-tag">
+          ${escapeHTML(resource.label)}
+        </span>
+
+      </div>
+
+      <h3>
+        ${escapeHTML(resource.title)}
+      </h3>
+
+      ${
+        resource.description
+          ? `
+            <p>
+              ${escapeHTML(
+                resource.description
+              )}
+            </p>
+          `
+          : ""
+      }
+
+      <button
+        type="button"
+        class="novera-resource-button"
+        data-url="${escapeHTML(resource.url)}"
+      >
+        Open resource
+        <span>↗</span>
+      </button>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================================
+   RESOURCE BUTTONS
+========================================================= */
+
+function openResource(
+  url
+) {
+
+  if (!url) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const parsed =
+      new URL(
+        url,
+        window.location.href
+      );
+
+
     /*
-      Important:
-      We deliberately start on the homepage.
-      We do NOT attempt to restore a learning route
-      automatically after refresh.
+      Only http/https resources.
     */
 
-    clearRoute();
+    if (
+      parsed.protocol !== "http:" &&
+      parsed.protocol !== "https:"
+    ) {
+
+      showToast(
+        "This resource link is not supported."
+      );
+
+      return;
+
+    }
+
+
+    window.open(
+      parsed.href,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+  } catch (error) {
+
+    showToast(
+      "This resource link is invalid."
+    );
+
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      init
+}
+
+
+/* =========================================================
+   HOMEPAGE CURRICULUM CARDS
+========================================================= */
+
+function initCurriculumCards() {
+
+  document
+    .querySelectorAll(
+      ".curriculum-card"
+    )
+    .forEach(card => {
+
+      card.addEventListener(
+        "click",
+        event => {
+
+          event.preventDefault();
+
+
+          const curriculum =
+            card.dataset.curriculum;
+
+
+          if (!curriculum) {
+
+            return;
+
+          }
+
+
+          openCurriculum(
+            curriculum
+          );
+
+        }
+      );
+
+    });
+
+}
+
+
+/* =========================================================
+   HOMEPAGE SUBJECT CARDS
+========================================================= */
+
+function initHomepageSubjects() {
+
+  document
+    .querySelectorAll(
+      ".subject-item"
+    )
+    .forEach(item => {
+
+      item.addEventListener(
+        "click",
+        event => {
+
+          event.preventDefault();
+
+
+          const requested =
+            item.dataset.subject;
+
+
+          const subjects =
+            getNormalizedClass10Subjects();
+
+
+          /*
+            Try exact key first.
+          */
+
+          let matchingKey =
+            Object.keys(
+              subjects
+            ).find(
+              key =>
+                slug(key) ===
+                slug(requested)
+            );
+
+
+          /*
+            Then try subject title.
+          */
+
+          if (!matchingKey) {
+
+            matchingKey =
+              Object.keys(
+                subjects
+              ).find(
+                key =>
+                  slug(
+                    subjects[key].name
+                  ) ===
+                  slug(requested)
+              );
+
+          }
+
+
+          /*
+            If found, open it.
+          */
+
+          if (matchingKey) {
+
+            NoveraState.curriculum =
+              "ncert";
+
+            NoveraState.classLevel =
+              "10";
+
+            NoveraState.subject =
+              matchingKey;
+
+            NoveraState.chapter =
+              null;
+
+            NoveraState.concept =
+              null;
+
+
+            renderSubjectPage();
+
+            return;
+
+          }
+
+
+          /*
+            The homepage subject list is
+            intentionally broader than the
+            current database. Do not fake
+            an unavailable subject.
+          */
+
+          showToast(
+            "This subject is not available yet."
+          );
+
+        }
+      );
+
+    });
+
+}
+
+
+/* =========================================================
+   RESOURCE BUTTON INITIALIZATION
+========================================================= */
+
+function initResourceButtons() {
+
+  document.addEventListener(
+    "click",
+    event => {
+
+      const button =
+        event.target.closest(
+          ".novera-resource-button"
+        );
+
+
+      if (!button) {
+
+        return;
+
+      }
+
+
+      const url =
+        button.dataset.url;
+
+
+      openResource(
+        url
+      );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   THEME
+========================================================= */
+
+function initTheme() {
+
+  const button =
+    document.getElementById(
+      "themeToggle"
     );
-  } else {
-    init();
+
+
+  if (!button) {
+
+    return;
+
   }
-})();
+
+
+  let savedTheme =
+    null;
+
+
+  try {
+
+    savedTheme =
+      localStorage.getItem(
+        "novera-theme"
+      );
+
+  } catch (error) {
+
+    savedTheme =
+      null;
+
+  }
+
+
+  if (savedTheme === "light") {
+
+    document.body.classList.add(
+      "light-theme"
+    );
+
+  }
+
+
+  button.addEventListener(
+    "click",
+    () => {
+
+      const isLight =
+        document.body.classList.toggle(
+          "light-theme"
+        );
+
+
+      try {
+
+        localStorage.setItem(
+          "novera-theme",
+          isLight
+            ? "light"
+            : "dark"
+        );
+
+      } catch (error) {}
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   MOBILE MENU
+========================================================= */
+
+function initMobileMenu() {
+
+  const button =
+    document.getElementById(
+      "menuToggle"
+    );
+
+
+  const menu =
+    document.getElementById(
+      "mobileNav"
+    );
+
+
+  if (
+    !button ||
+    !menu
+  ) {
+
+    return;
+
+  }
+
+
+  button.addEventListener(
+    "click",
+    () => {
+
+      menu.classList.toggle(
+        "open"
+      );
+
+    }
+  );
+
+
+  menu
+    .querySelectorAll("a")
+    .forEach(link => {
+
+      link.addEventListener(
+        "click",
+        () => {
+
+          menu.classList.remove(
+            "open"
+          );
+
+        }
+      );
+
+    });
+
+}
+
+
+/* =========================================================
+   HOMEPAGE BRAND
+========================================================= */
+
+function initBrand() {
+
+  const brand =
+    document.querySelector(
+      ".brand"
+    );
+
+
+  if (!brand) {
+
+    return;
+
+  }
+
+
+  brand.addEventListener(
+    "click",
+    event => {
+
+      event.preventDefault();
+
+      showHomepage();
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   ANIMATED REVEALS
+========================================================= */
+
+function initRevealAnimations() {
+
+  const elements =
+    document.querySelectorAll(
+      ".hero, .curriculum-section, .subjects-section, .resources-section, .tools-section, .about-section, .contact-section, .resource-feature, .curriculum-card, .subject-item"
+    );
+
+
+  if (
+    !("IntersectionObserver" in window)
+  ) {
+
+    return;
+
+  }
+
+
+  const observer =
+    new IntersectionObserver(
+      entries => {
+
+        entries.forEach(entry => {
+
+          if (
+            entry.isIntersecting
+          ) {
+
+            entry.target.classList.add(
+              "revealed"
+            );
+
+            observer.unobserve(
+              entry.target
+            );
+
+          }
+
+        });
+
+      },
+      {
+        threshold: 0.08
+      }
+    );
+
+
+  elements.forEach(
+    element =>
+      observer.observe(
+        element
+      )
+  );
+
+}
+
+
+/* =========================================================
+   SMOOTH ANCHOR LINKS
+========================================================= */
+
+function initSmoothLinks() {
+
+  document.addEventListener(
+    "click",
+    event => {
+
+      const link =
+        event.target.closest(
+          "a[href^='#']"
+        );
+
+
+      if (!link) {
+
+        return;
+
+      }
+
+
+      const href =
+        link.getAttribute(
+          "href"
+        );
+
+
+      if (
+        !href ||
+        href === "#"
+      ) {
+
+        return;
+
+      }
+
+
+      const target =
+        document.querySelector(
+          href
+        );
+
+
+      if (!target) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+
+
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   DYNAMIC RESOURCE BUTTON SUPPORT
+========================================================= */
+
+function initGlobalDynamicEvents() {
+
+  initResourceButtons();
+
+}
+
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+function initNovera() {
+
+  initCurriculumCards();
+
+  initHomepageSubjects();
+
+  initTheme();
+
+  initMobileMenu();
+
+  initBrand();
+
+  initRevealAnimations();
+
+  initSmoothLinks();
+
+  initGlobalDynamicEvents();
+
+
+  /*
+    Basic database check.
+  */
+
+  const database =
+    getClass10Database();
+
+
+  if (!database) {
+
+    console.warn(
+      "Novera: NCERT Class 10 database was not found."
+    );
+
+  } else {
+
+    console.log(
+      "Novera: NCERT Class 10 database loaded."
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   START
+========================================================= */
+
+if (
+  document.readyState === "loading"
+) {
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    initNovera
+  );
+
+} else {
+
+  initNovera();
+
+}
