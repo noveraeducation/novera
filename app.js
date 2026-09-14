@@ -1,38 +1,25 @@
 /* =========================================================
-   NOVERA V2 — NAVIGATION ENGINE
-   Hierarchical navigation + history
+   NOVERA — V2 CONTENT ENGINE
+   External NCERT database + existing navigation
    ========================================================= */
 
 "use strict";
 
 
 /* =========================================================
-   STATE
-   ========================================================= */
-
-const NoveraState = {
-
-  curriculum: null,
-  classLevel: null,
-  subject: null,
-  chapter: null,
-  concept: null,
-
-  bookmarks: JSON.parse(
-    localStorage.getItem("noveraBookmarks") || "[]"
-  ),
-
-  history: []
-};
-
-
-/* =========================================================
-   NCERT DATA FOUNDATION
+   DATABASE CONNECTION
    ========================================================= */
 
 const NCERT = {
 
+  /* -------------------------------------------------------
+     CLASS 9
+     Temporary foundation until its external database
+     is connected.
+     ------------------------------------------------------- */
+
   "9": {
+
     name: "Class 9",
 
     subjects: {
@@ -58,61 +45,33 @@ const NCERT = {
       }
 
     }
+
   },
 
+
+  /* -------------------------------------------------------
+     CLASS 10
+     REAL EXTERNAL DATABASE
+     Loaded from data/ncert/class10/index.js
+     ------------------------------------------------------- */
 
   "10": {
+
     name: "Class 10",
 
-    subjects: {
+    subjects:
+      convertClass10Database()
 
-      mathematics: {
-        name: "Mathematics",
-
-        chapters: [
-
-          {
-            id: "real-numbers",
-
-            name: "Real Numbers",
-
-            concepts: [
-
-              "Euclid's Division Lemma",
-              "Fundamental Theorem of Arithmetic",
-              "Irrational Numbers",
-              "Decimal Expansions",
-              "HCF and LCM"
-
-            ]
-          }
-
-        ]
-      },
-
-
-      science: {
-        name: "Science",
-        chapters: []
-      },
-
-
-      "social-science": {
-        name: "Social Science",
-        chapters: []
-      },
-
-
-      english: {
-        name: "English",
-        chapters: []
-      }
-
-    }
   },
 
 
+  /* -------------------------------------------------------
+     CLASS 11
+     Temporary foundation
+     ------------------------------------------------------- */
+
   "11": {
+
     name: "Class 11",
 
     subjects: {
@@ -148,10 +107,17 @@ const NCERT = {
       }
 
     }
+
   },
 
 
+  /* -------------------------------------------------------
+     CLASS 12
+     Temporary foundation
+     ------------------------------------------------------- */
+
   "12": {
+
     name: "Class 12",
 
     subjects: {
@@ -187,7 +153,194 @@ const NCERT = {
       }
 
     }
+
   }
+
+};
+
+
+/* =========================================================
+   CONVERT CLASS 10 DATABASE
+   ========================================================= */
+
+function convertClass10Database() {
+
+  if (
+    typeof window.NCERT_CLASS_10 === "undefined"
+  ) {
+
+    console.error(
+      "Novera: Class 10 database was not loaded."
+    );
+
+    return {};
+
+  }
+
+
+  const source =
+    window.NCERT_CLASS_10;
+
+
+  const result = {};
+
+
+  /*
+   * The external database contains:
+   *
+   * Mathematics
+   *   ↓
+   * chapters
+   *   ↓
+   * sections
+   *   ↓
+   * concepts
+   *
+   * The current navigation is:
+   *
+   * Class
+   *   ↓
+   * Subject
+   *   ↓
+   * Chapter
+   *   ↓
+   * Concept
+   *
+   * Therefore we flatten sections into the
+   * chapter's concept list while keeping the
+   * complete section information attached.
+   */
+
+  Object.entries(source).forEach(
+    ([subjectId, subjectData]) => {
+
+      const chapters =
+        (subjectData.chapters || [])
+          .map(chapter => {
+
+            const concepts = [];
+
+
+            /*
+             * Convert:
+             *
+             * section → concepts
+             *
+             * into:
+             *
+             * chapter → concepts
+             *
+             */
+
+            (chapter.sections || [])
+              .forEach(section => {
+
+                (section.concepts || [])
+                  .forEach(concept => {
+
+                    concepts.push({
+
+                      id: concept.id,
+
+                      name: concept.name,
+
+                      sectionId:
+                        section.id,
+
+                      sectionName:
+                        section.name,
+
+                      subtopics:
+                        concept.subtopics || [],
+
+                      resources:
+                        concept.resources || {},
+
+                      difficulty:
+                        concept.difficulty || null,
+
+                      prerequisites:
+                        concept.prerequisites || [],
+
+                      tools:
+                        concept.tools || []
+
+                    });
+
+                  });
+
+              });
+
+
+            return {
+
+              id: chapter.id,
+
+              number: chapter.number,
+
+              name: chapter.name,
+
+              sections:
+                chapter.sections || [],
+
+              concepts,
+
+              resources:
+                chapter.resources || {}
+
+            };
+
+          });
+
+
+      result[subjectId] = {
+
+        id:
+          subjectData.id ||
+          subjectId,
+
+        name:
+          subjectData.name,
+
+        book:
+          subjectData.book || {},
+
+        chapters
+
+      };
+
+    }
+  );
+
+
+  return result;
+
+}
+
+
+/* =========================================================
+   STATE
+   ========================================================= */
+
+const NoveraState = {
+
+  curriculum: null,
+
+  classLevel: null,
+
+  subject: null,
+
+  chapter: null,
+
+  concept: null,
+
+  bookmarks: JSON.parse(
+    localStorage.getItem(
+      "noveraBookmarks"
+    ) || "[]"
+  ),
+
+  history: []
 
 };
 
@@ -199,12 +352,19 @@ const NCERT = {
 const RESOURCE_TYPES = {
 
   BEST: "Best overall",
+
   CONCEPT: "Conceptual",
+
   EXAM: "Exam focused",
+
   REVISION: "Quick revision",
+
   OFFICIAL: "Official resource",
+
   PRACTICE: "Practice",
+
   PAPER: "Question paper",
+
   TOOL: "Useful tool"
 
 };
@@ -217,10 +377,13 @@ const RESOURCE_TYPES = {
 function saveBookmarks() {
 
   localStorage.setItem(
+
     "noveraBookmarks",
+
     JSON.stringify(
       NoveraState.bookmarks
     )
+
   );
 
 }
@@ -229,10 +392,19 @@ function saveBookmarks() {
 function slugify(text) {
 
   return text
+
     .toLowerCase()
+
     .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+
+    .replace(
+      /[^a-z0-9]+/g,
+      "-"
+    )
+
+    .replace(
+      /^-+|-+$/g,
+      "");
 
 }
 
@@ -240,11 +412,57 @@ function slugify(text) {
 function escapeHTML(text) {
 
   const div =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  div.textContent = text;
+  div.textContent =
+    text == null
+      ? ""
+      : String(text);
 
   return div.innerHTML;
+
+}
+
+
+/* =========================================================
+   FIND CURRENT CONCEPT
+   ========================================================= */
+
+function getCurrentConcept() {
+
+  const classData =
+    NCERT[
+      NoveraState.classLevel
+    ];
+
+  if (!classData) return null;
+
+
+  const subject =
+    classData.subjects[
+      NoveraState.subject
+    ];
+
+  if (!subject) return null;
+
+
+  const chapter =
+    subject.chapters.find(
+      item =>
+        item.id ===
+        NoveraState.chapter
+    );
+
+  if (!chapter) return null;
+
+
+  return chapter.concepts.find(
+    concept =>
+      concept.id ===
+      NoveraState.concept
+  ) || null;
 
 }
 
@@ -253,22 +471,34 @@ function escapeHTML(text) {
    TOAST
    ========================================================= */
 
-function showNoveraMessage(message) {
+function showNoveraMessage(
+  message
+) {
 
   let toast =
-    document.querySelector(".novera-toast");
+    document.querySelector(
+      ".novera-toast"
+    );
+
 
   if (!toast) {
 
     toast =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
 
     toast.className =
       "novera-toast";
 
-    toast.style.position = "fixed";
-    toast.style.left = "50%";
-    toast.style.bottom = "24px";
+    toast.style.position =
+      "fixed";
+
+    toast.style.left =
+      "50%";
+
+    toast.style.bottom =
+      "24px";
 
     toast.style.transform =
       "translateX(-50%) translateY(20px)";
@@ -282,11 +512,14 @@ function showNoveraMessage(message) {
     toast.style.background =
       "rgba(15,20,17,.94)";
 
-    toast.style.color = "#fff";
+    toast.style.color =
+      "#fff";
 
-    toast.style.fontSize = "14px";
+    toast.style.fontSize =
+      "14px";
 
-    toast.style.zIndex = "9999";
+    toast.style.zIndex =
+      "9999";
 
     toast.style.pointerEvents =
       "none";
@@ -294,37 +527,54 @@ function showNoveraMessage(message) {
     toast.style.transition =
       "opacity .25s ease, transform .25s ease";
 
-    toast.style.opacity = "0";
+    toast.style.opacity =
+      "0";
 
     toast.style.boxShadow =
       "0 10px 35px rgba(0,0,0,.25)";
 
-    document.body.appendChild(toast);
+    document.body.appendChild(
+      toast
+    );
 
   }
 
-  toast.textContent = message;
 
-  requestAnimationFrame(() => {
+  toast.textContent =
+    message;
 
-    toast.style.opacity = "1";
 
-    toast.style.transform =
-      "translateX(-50%) translateY(0)";
+  requestAnimationFrame(
+    () => {
 
-  });
-
-  clearTimeout(toast._timer);
-
-  toast._timer =
-    setTimeout(() => {
-
-      toast.style.opacity = "0";
+      toast.style.opacity =
+        "1";
 
       toast.style.transform =
-        "translateX(-50%) translateY(20px)";
+        "translateX(-50%) translateY(0)";
 
-    }, 2200);
+    }
+  );
+
+
+  clearTimeout(
+    toast._timer
+  );
+
+
+  toast._timer =
+    setTimeout(
+      () => {
+
+        toast.style.opacity =
+          "0";
+
+        toast.style.transform =
+          "translateX(-50%) translateY(20px)";
+
+      },
+      2200
+    );
 
 }
 
@@ -337,18 +587,29 @@ function pushHistory() {
 
   NoveraState.history.push({
 
-    curriculum: NoveraState.curriculum,
-    classLevel: NoveraState.classLevel,
-    subject: NoveraState.subject,
-    chapter: NoveraState.chapter,
-    concept: NoveraState.concept
+    curriculum:
+      NoveraState.curriculum,
+
+    classLevel:
+      NoveraState.classLevel,
+
+    subject:
+      NoveraState.subject,
+
+    chapter:
+      NoveraState.chapter,
+
+    concept:
+      NoveraState.concept
 
   });
 
 }
 
 
-function restoreState(state) {
+function restoreState(
+  state
+) {
 
   NoveraState.curriculum =
     state.curriculum;
@@ -379,6 +640,7 @@ function goBack() {
       ".novera-v2-page"
     );
 
+
   if (currentPage) {
 
     currentPage.remove();
@@ -386,11 +648,16 @@ function goBack() {
   }
 
 
-  if (NoveraState.history.length === 0) {
+  if (
+    NoveraState.history.length === 0
+  ) {
 
     window.scrollTo({
+
       top: 0,
+
       behavior: "smooth"
+
     });
 
     return;
@@ -402,14 +669,21 @@ function goBack() {
     NoveraState.history.pop();
 
 
-  restoreState(previous);
+  restoreState(
+    previous
+  );
 
 
-  if (!previous.curriculum) {
+  if (
+    !previous.curriculum
+  ) {
 
     window.scrollTo({
+
       top: 0,
+
       behavior: "smooth"
+
     });
 
     return;
@@ -418,8 +692,12 @@ function goBack() {
 
 
   if (
-    previous.curriculum === "ncert" &&
+
+    previous.curriculum ===
+      "ncert" &&
+
     !previous.classLevel
+
   ) {
 
     openNCERTClassSelector(
@@ -432,9 +710,14 @@ function goBack() {
 
 
   if (
-    previous.curriculum === "ncert" &&
+
+    previous.curriculum ===
+      "ncert" &&
+
     previous.classLevel &&
+
     !previous.subject
+
   ) {
 
     openNCERTClass(
@@ -448,10 +731,16 @@ function goBack() {
 
 
   if (
-    previous.curriculum === "ncert" &&
+
+    previous.curriculum ===
+      "ncert" &&
+
     previous.classLevel &&
+
     previous.subject &&
+
     !previous.chapter
+
   ) {
 
     openNCERTSubject(
@@ -465,11 +754,18 @@ function goBack() {
 
 
   if (
-    previous.curriculum === "ncert" &&
+
+    previous.curriculum ===
+      "ncert" &&
+
     previous.classLevel &&
+
     previous.subject &&
+
     previous.chapter &&
+
     !previous.concept
+
   ) {
 
     openChapter(
@@ -483,8 +779,12 @@ function goBack() {
 
 
   if (
-    previous.curriculum === "ncert" &&
+
+    previous.curriculum ===
+      "ncert" &&
+
     previous.concept
+
   ) {
 
     openConcept(
@@ -502,8 +802,11 @@ function goBack() {
    ========================================================= */
 
 function openCurriculum(
+
   curriculum,
+
   addHistory = true
+
 ) {
 
   if (addHistory) {
@@ -516,13 +819,22 @@ function openCurriculum(
   NoveraState.curriculum =
     curriculum;
 
-  NoveraState.classLevel = null;
-  NoveraState.subject = null;
-  NoveraState.chapter = null;
-  NoveraState.concept = null;
+  NoveraState.classLevel =
+    null;
+
+  NoveraState.subject =
+    null;
+
+  NoveraState.chapter =
+    null;
+
+  NoveraState.concept =
+    null;
 
 
-  if (curriculum === "ncert") {
+  if (
+    curriculum === "ncert"
+  ) {
 
     openNCERTClassSelector(
       false
@@ -556,13 +868,19 @@ function openNCERTClassSelector(
 
 
   const classes =
+
     Object.entries(NCERT)
-      .map(([id, data]) => ({
 
-        id,
-        name: data.name
+      .map(
+        ([id, data]) => ({
 
-      }));
+          id,
+
+          name:
+            data.name
+
+        })
+      );
 
 
   renderLearningPage(
@@ -585,8 +903,11 @@ function openNCERTClassSelector(
    ========================================================= */
 
 function openNCERTClass(
+
   classLevel,
+
   addHistory = true
+
 ) {
 
   if (addHistory) {
@@ -599,26 +920,41 @@ function openNCERTClass(
   NoveraState.classLevel =
     classLevel;
 
-  NoveraState.subject = null;
-  NoveraState.chapter = null;
-  NoveraState.concept = null;
+  NoveraState.subject =
+    null;
+
+  NoveraState.chapter =
+    null;
+
+  NoveraState.concept =
+    null;
 
 
   const classData =
-    NCERT[classLevel];
+    NCERT[
+      classLevel
+    ];
+
 
   if (!classData) return;
 
 
   const subjects =
+
     Object.entries(
       classData.subjects
-    ).map(([id, data]) => ({
+    )
 
-      id,
-      name: data.name
+      .map(
+        ([id, data]) => ({
 
-    }));
+          id,
+
+          name:
+            data.name
+
+        })
+      );
 
 
   renderLearningPage(
@@ -641,8 +977,11 @@ function openNCERTClass(
    ========================================================= */
 
 function openNCERTSubject(
+
   subjectId,
+
   addHistory = true
+
 ) {
 
   if (addHistory) {
@@ -657,6 +996,7 @@ function openNCERTSubject(
       NoveraState.classLevel
     ];
 
+
   if (!classData) return;
 
 
@@ -665,27 +1005,33 @@ function openNCERTSubject(
       subjectId
     ];
 
+
   if (!subject) return;
 
 
   NoveraState.subject =
     subjectId;
 
-  NoveraState.chapter = null;
-  NoveraState.concept = null;
+  NoveraState.chapter =
+    null;
+
+  NoveraState.concept =
+    null;
 
 
   const chapters =
     subject.chapters || [];
 
 
-  if (!chapters.length) {
+  if (
+    !chapters.length
+  ) {
 
     renderEmptyLearningPage(
 
       subject.name,
 
-      "Chapter resources are being connected."
+      "Chapter resources are not connected yet."
 
     );
 
@@ -714,8 +1060,11 @@ function openNCERTSubject(
    ========================================================= */
 
 function openChapter(
+
   chapterId,
+
   addHistory = true
+
 ) {
 
   if (addHistory) {
@@ -730,6 +1079,7 @@ function openChapter(
       NoveraState.classLevel
     ];
 
+
   if (!classData) return;
 
 
@@ -738,14 +1088,19 @@ function openChapter(
       NoveraState.subject
     ];
 
+
   if (!subject) return;
 
 
   const chapter =
     subject.chapters.find(
+
       item =>
-        item.id === chapterId
+        item.id ===
+        chapterId
+
     );
+
 
   if (!chapter) return;
 
@@ -753,18 +1108,29 @@ function openChapter(
   NoveraState.chapter =
     chapterId;
 
-  NoveraState.concept = null;
+  NoveraState.concept =
+    null;
 
 
   const concepts =
-    chapter.concepts.map(
-      concept => ({
+    chapter.concepts || [];
 
-        id: slugify(concept),
-        name: concept
 
-      })
+  if (
+    !concepts.length
+  ) {
+
+    renderEmptyLearningPage(
+
+      chapter.name,
+
+      "Concepts are not connected yet."
+
     );
+
+    return;
+
+  }
 
 
   renderLearningPage(
@@ -787,8 +1153,11 @@ function openChapter(
    ========================================================= */
 
 function openConcept(
+
   conceptId,
+
   addHistory = true
+
 ) {
 
   if (addHistory) {
@@ -802,18 +1171,23 @@ function openConcept(
     conceptId;
 
 
-  const title =
-    conceptId
-      .replace(/-/g, " ")
-      .replace(
-        /\b\w/g,
-        letter =>
-          letter.toUpperCase()
-      );
+  const concept =
+    getCurrentConcept();
+
+
+  if (!concept) {
+
+    showNoveraMessage(
+      "Concept not found."
+    );
+
+    return;
+
+  }
 
 
   renderConceptPage(
-    title
+    concept
   );
 
 }
@@ -824,16 +1198,22 @@ function openConcept(
    ========================================================= */
 
 function renderLearningPage(
+
   eyebrow,
+
   title,
+
   items,
+
   type
+
 ) {
 
   const existing =
     document.querySelector(
       ".novera-v2-page"
     );
+
 
   if (existing) {
 
@@ -846,6 +1226,7 @@ function renderLearningPage(
     document.createElement(
       "section"
     );
+
 
   page.className =
     "novera-v2-page";
@@ -911,13 +1292,15 @@ function renderLearningPage(
   );
 
 
-  requestAnimationFrame(() => {
+  requestAnimationFrame(
+    () => {
 
-    page.classList.add(
-      "active"
-    );
+      page.classList.add(
+        "active"
+      );
 
-  });
+    }
+  );
 
 
   page
@@ -934,63 +1317,65 @@ function renderLearningPage(
     .querySelectorAll(
       ".novera-v2-card"
     )
-    .forEach(card => {
+    .forEach(
+      card => {
 
-      card.addEventListener(
-        "click",
-        () => {
+        card.addEventListener(
+          "click",
+          () => {
 
-          const id =
-            card.dataset.id;
+            const id =
+              card.dataset.id;
 
 
-          if (
-            type === "class"
-          ) {
+            if (
+              type === "class"
+            ) {
 
-            openNCERTClass(
-              id
-            );
+              openNCERTClass(
+                id
+              );
+
+            }
+
+
+            if (
+              type === "subject"
+            ) {
+
+              openNCERTSubject(
+                id
+              );
+
+            }
+
+
+            if (
+              type === "chapter"
+            ) {
+
+              openChapter(
+                id
+              );
+
+            }
+
+
+            if (
+              type === "concept"
+            ) {
+
+              openConcept(
+                id
+              );
+
+            }
 
           }
+        );
 
-
-          if (
-            type === "subject"
-          ) {
-
-            openNCERTSubject(
-              id
-            );
-
-          }
-
-
-          if (
-            type === "chapter"
-          ) {
-
-            openChapter(
-              id
-            );
-
-          }
-
-
-          if (
-            type === "concept"
-          ) {
-
-            openConcept(
-              id
-            );
-
-          }
-
-        }
-      );
-
-    });
+      }
+    );
 
 }
 
@@ -1000,14 +1385,18 @@ function renderLearningPage(
    ========================================================= */
 
 function renderEmptyLearningPage(
+
   title,
+
   message
+
 ) {
 
   const existing =
     document.querySelector(
       ".novera-v2-page"
     );
+
 
   if (existing) {
 
@@ -1020,6 +1409,7 @@ function renderEmptyLearningPage(
     document.createElement(
       "section"
     );
+
 
   page.className =
     "novera-v2-page";
@@ -1066,13 +1456,15 @@ function renderEmptyLearningPage(
   );
 
 
-  requestAnimationFrame(() => {
+  requestAnimationFrame(
+    () => {
 
-    page.classList.add(
-      "active"
-    );
+      page.classList.add(
+        "active"
+      );
 
-  });
+    }
+  );
 
 
   page
@@ -1092,13 +1484,14 @@ function renderEmptyLearningPage(
    ========================================================= */
 
 function renderConceptPage(
-  title
+  concept
 ) {
 
   const existing =
     document.querySelector(
       ".novera-v2-page"
     );
+
 
   if (existing) {
 
@@ -1112,6 +1505,7 @@ function renderConceptPage(
       "section"
     );
 
+
   page.className =
     "novera-v2-page novera-concept-page";
 
@@ -1119,8 +1513,11 @@ function renderConceptPage(
   const bookmarkId = [
 
     NoveraState.classLevel,
+
     NoveraState.subject,
+
     NoveraState.chapter,
+
     NoveraState.concept
 
   ].join("/");
@@ -1130,6 +1527,18 @@ function renderConceptPage(
     NoveraState.bookmarks.includes(
       bookmarkId
     );
+
+
+  const subtopics =
+    concept.subtopics || [];
+
+
+  const prerequisites =
+    concept.prerequisites || [];
+
+
+  const tools =
+    concept.tools || [];
 
 
   page.innerHTML = `
@@ -1144,11 +1553,16 @@ function renderConceptPage(
       </button>
 
       <span class="section-label">
-        CONCEPT
+        ${escapeHTML(
+          concept.sectionName ||
+          "CONCEPT"
+        )}
       </span>
 
       <h1>
-        ${escapeHTML(title)}
+        ${escapeHTML(
+          concept.name
+        )}
       </h1>
 
       <p class="novera-concept-intro">
@@ -1159,7 +1573,9 @@ function renderConceptPage(
       <button
         class="novera-bookmark-button"
         type="button"
-        data-bookmark="${escapeHTML(bookmarkId)}"
+        data-bookmark="${escapeHTML(
+          bookmarkId
+        )}"
       >
         ${
           bookmarked
@@ -1168,51 +1584,169 @@ function renderConceptPage(
         }
       </button>
 
-      <div class="novera-resource-grid">
 
-        ${createResourceCard(
-          "🏆",
-          RESOURCE_TYPES.BEST,
-          "Best overall",
-          "A carefully selected resource for understanding this concept."
-        )}
+      ${
+        subtopics.length
+          ? `
 
-        ${createResourceCard(
-          "🧠",
-          RESOURCE_TYPES.CONCEPT,
-          "Conceptual",
-          "A resource focused on understanding rather than memorising."
-        )}
+            <div
+              class="novera-detail-block"
+              style="
+                margin:28px 0;
+                padding:22px;
+                border:1px solid rgba(128,128,128,.18);
+                border-radius:20px;
+                background:rgba(128,128,128,.06);
+              "
+            >
 
-        ${createResourceCard(
-          "🎯",
-          RESOURCE_TYPES.EXAM,
-          "Exam focused",
-          "Useful after you understand the underlying idea."
-        )}
+              <span
+                class="section-label"
+              >
+                WHAT YOU'LL LEARN
+              </span>
 
-        ${createResourceCard(
-          "⚡",
-          RESOURCE_TYPES.REVISION,
-          "Quick revision",
-          "A compact resource for refreshing the concept."
-        )}
+              <ul
+                style="
+                  margin:14px 0 0;
+                  padding-left:20px;
+                  line-height:1.8;
+                "
+              >
 
-        ${createResourceCard(
-          "📖",
-          RESOURCE_TYPES.OFFICIAL,
-          "Official resource",
-          "Official textbook and learning material."
-        )}
+                ${subtopics.map(
+                  item => `
 
-        ${createResourceCard(
-          "✎",
-          RESOURCE_TYPES.PRACTICE,
-          "Practice",
-          "Questions designed to help you check your understanding."
+                    <li>
+                      ${escapeHTML(item)}
+                    </li>
+
+                  `
+                ).join("")}
+
+              </ul>
+
+            </div>
+
+          `
+          : ""
+      }
+
+
+      ${
+        prerequisites.length
+          ? `
+
+            <div
+              class="novera-detail-block"
+              style="
+                margin:28px 0;
+                padding:22px;
+                border:1px solid rgba(128,128,128,.18);
+                border-radius:20px;
+                background:rgba(128,128,128,.06);
+              "
+            >
+
+              <span
+                class="section-label"
+              >
+                BEFORE THIS
+              </span>
+
+              <div
+                style="
+                  margin-top:14px;
+                  display:flex;
+                  flex-wrap:wrap;
+                  gap:8px;
+                "
+              >
+
+                ${prerequisites.map(
+                  item => `
+
+                    <span
+                      style="
+                        padding:8px 12px;
+                        border-radius:999px;
+                        background:rgba(128,128,128,.12);
+                        font-size:13px;
+                      "
+                    >
+                      ${escapeHTML(item)}
+                    </span>
+
+                  `
+                ).join("")}
+
+              </div>
+
+            </div>
+
+          `
+          : ""
+      }
+
+
+      <div
+        class="novera-resource-grid"
+      >
+
+        ${renderResources(
+          concept.resources
         )}
 
       </div>
+
+
+      ${
+        tools.length
+          ? `
+
+            <div
+              style="
+                margin-top:30px;
+              "
+            >
+
+              <span
+                class="section-label"
+              >
+                USEFUL TOOLS
+              </span>
+
+              <div
+                style="
+                  margin-top:14px;
+                  display:flex;
+                  flex-wrap:wrap;
+                  gap:10px;
+                "
+              >
+
+                ${tools.map(
+                  tool => `
+
+                    <button
+                      type="button"
+                      class="novera-resource-button"
+                      data-tool="${escapeHTML(tool)}"
+                    >
+                      ${escapeHTML(tool)}
+                      →
+                    </button>
+
+                  `
+                ).join("")}
+
+              </div>
+
+            </div>
+
+          `
+          : ""
+      }
 
     </div>
 
@@ -1224,13 +1758,15 @@ function renderConceptPage(
   );
 
 
-  requestAnimationFrame(() => {
+  requestAnimationFrame(
+    () => {
 
-    page.classList.add(
-      "active"
-    );
+      page.classList.add(
+        "active"
+      );
 
-  });
+    }
+  );
 
 
   page
@@ -1298,61 +1834,200 @@ function renderConceptPage(
     }
   );
 
+
+  page
+    .querySelectorAll(
+      "[data-tool]"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            showNoveraMessage(
+              "This tool will open when the Novera toolkit is connected."
+            );
+
+          }
+        );
+
+      }
+    );
+
 }
 
 
 /* =========================================================
-   RESOURCE CARD
+   RESOURCE RENDERER
    ========================================================= */
 
-function createResourceCard(
-  icon,
-  tag,
-  title,
-  description
+function renderResources(
+  resources
 ) {
 
-  return `
+  if (
+    !resources ||
+    typeof resources !== "object"
+  ) {
 
-    <article
-      class="novera-resource-item"
-    >
+    return "";
 
-      <div class="resource-item-top">
+  }
 
-        <span
-          class="resource-item-icon"
-        >
-          ${icon}
-        </span>
 
-        <span
-          class="resource-item-tag"
-        >
-          ${escapeHTML(tag)}
-        </span>
+  const order = [
 
-      </div>
+    {
+      key: "best",
+      icon: "🏆",
+      title: "Best overall"
+    },
 
-      <h2>
-        ${escapeHTML(title)}
-      </h2>
+    {
+      key: "conceptual",
+      icon: "🧠",
+      title: "Conceptual"
+    },
 
-      <p>
-        ${escapeHTML(description)}
-      </p>
+    {
+      key: "exam",
+      icon: "🎯",
+      title: "Exam focused"
+    },
 
-      <button
-        class="novera-resource-button"
-        type="button"
-        disabled
-      >
-        Resource connection →
-      </button>
+    {
+      key: "revision",
+      icon: "⚡",
+      title: "Quick revision"
+    },
 
-    </article>
+    {
+      key: "official",
+      icon: "📖",
+      title: "Official resource"
+    },
 
-  `;
+    {
+      key: "practice",
+      icon: "✎",
+      title: "Practice"
+    },
+
+    {
+      key: "paper",
+      icon: "📝",
+      title: "Question paper"
+    }
+
+  ];
+
+
+  return order
+
+    .map(
+      category => {
+
+        const list =
+          resources[
+            category.key
+          ];
+
+
+        if (
+          !Array.isArray(list) ||
+          !list.length
+        ) {
+
+          return "";
+
+        }
+
+
+        return list
+
+          .map(
+            resource => {
+
+              const url =
+                resource.url || "#";
+
+
+              return `
+
+                <article
+                  class="novera-resource-item"
+                >
+
+                  <div
+                    class="resource-item-top"
+                  >
+
+                    <span
+                      class="resource-item-icon"
+                    >
+                      ${category.icon}
+                    </span>
+
+                    <span
+                      class="resource-item-tag"
+                    >
+                      ${escapeHTML(
+                        category.title
+                      )}
+                    </span>
+
+                  </div>
+
+                  <h2>
+                    ${escapeHTML(
+                      resource.title ||
+                      category.title
+                    )}
+                  </h2>
+
+                  <p>
+                    ${escapeHTML(
+                      resource.description ||
+                      (
+                        resource.provider
+                          ? resource.provider
+                          : "Selected learning resource."
+                      )
+                    )}
+                  </p>
+
+                  ${
+                    url !== "#"
+                      ? `
+
+                        <a
+                          class="novera-resource-button"
+                          href="${escapeHTML(url)}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Open resource →
+                        </a>
+
+                      `
+                      : ""
+                  }
+
+                </article>
+
+              `;
+
+            }
+          )
+
+          .join("");
+
+      }
+    )
+
+    .join("");
 
 }
 
@@ -1364,29 +2039,36 @@ function createResourceCard(
 function initCurriculumCards() {
 
   document
+
     .querySelectorAll(
       ".curriculum-card"
     )
-    .forEach(card => {
 
-      card.addEventListener(
-        "click",
-        () => {
+    .forEach(
+      card => {
 
-          const curriculum =
-            card.dataset.curriculum;
+        card.addEventListener(
+          "click",
+          () => {
 
-          NoveraState.history = [];
+            const curriculum =
+              card.dataset.curriculum;
 
-          openCurriculum(
-            curriculum,
-            false
-          );
 
-        }
-      );
+            NoveraState.history =
+              [];
 
-    });
+
+            openCurriculum(
+              curriculum,
+              false
+            );
+
+          }
+        );
+
+      }
+    );
 
 }
 
@@ -1398,32 +2080,36 @@ function initCurriculumCards() {
 function initSubjectItems() {
 
   document
+
     .querySelectorAll(
       ".subject-item"
     )
-    .forEach(item => {
 
-      item.addEventListener(
-        "click",
-        () => {
+    .forEach(
+      item => {
 
-          const text =
-            item.querySelector(
-              "strong"
-            )?.textContent;
+        item.addEventListener(
+          "click",
+          () => {
+
+            const text =
+              item.querySelector(
+                "strong"
+              )?.textContent;
 
 
-          if (!text) return;
+            if (!text) return;
 
 
-          showNoveraMessage(
-            `${text} will open through the NCERT learning path.`
-          );
+            showNoveraMessage(
+              `${text} will open through the NCERT learning path.`
+            );
 
-        }
-      );
+          }
+        );
 
-    });
+      }
+    );
 
 }
 
@@ -1438,6 +2124,7 @@ function initTheme() {
     document.querySelector(
       "#themeToggle"
     );
+
 
   if (!toggle) return;
 
@@ -1475,10 +2162,13 @@ function initTheme() {
 
 
       localStorage.setItem(
+
         "noveraTheme",
+
         isLight
           ? "light"
           : "dark"
+
       );
 
     }
@@ -1498,13 +2188,17 @@ function initMobileMenu() {
       "#menuButton"
     );
 
+
   const menu =
     document.querySelector(
       "#mobileMenu"
     );
 
 
-  if (!button || !menu) return;
+  if (
+    !button ||
+    !menu
+  ) return;
 
 
   button.addEventListener(
@@ -1521,20 +2215,22 @@ function initMobileMenu() {
 
   menu
     .querySelectorAll("a")
-    .forEach(link => {
+    .forEach(
+      link => {
 
-      link.addEventListener(
-        "click",
-        () => {
+        link.addEventListener(
+          "click",
+          () => {
 
-          menu.classList.remove(
-            "active"
-          );
+            menu.classList.remove(
+              "active"
+            );
 
-        }
-      );
+          }
+        );
 
-    });
+      }
+    );
 
 }
 
@@ -1552,7 +2248,10 @@ function initReveal() {
 
 
   if (
-    !("IntersectionObserver" in window)
+    !(
+      "IntersectionObserver"
+      in window
+    )
   ) {
 
     elements.forEach(
@@ -1569,6 +2268,7 @@ function initReveal() {
 
   const observer =
     new IntersectionObserver(
+
       entries => {
 
         entries.forEach(
@@ -1592,15 +2292,19 @@ function initReveal() {
         );
 
       },
+
       {
         threshold: 0.12
       }
+
     );
 
 
   elements.forEach(
     element =>
-      observer.observe(element)
+      observer.observe(
+        element
+      )
   );
 
 }
@@ -1613,47 +2317,54 @@ function initReveal() {
 function initSmoothLinks() {
 
   document
+
     .querySelectorAll(
       'a[href^="#"]'
     )
-    .forEach(link => {
 
-      link.addEventListener(
-        "click",
-        event => {
+    .forEach(
+      link => {
 
-          const id =
-            link.getAttribute(
-              "href"
-            );
+        link.addEventListener(
+          "click",
+          event => {
 
-
-          if (
-            !id ||
-            id === "#"
-          ) return;
+            const id =
+              link.getAttribute(
+                "href"
+              );
 
 
-          const target =
-            document.querySelector(
-              id
-            );
+            if (
+              !id ||
+              id === "#"
+            ) return;
 
 
-          if (!target) return;
+            const target =
+              document.querySelector(
+                id
+              );
 
 
-          event.preventDefault();
+            if (!target) return;
 
 
-          target.scrollIntoView({
-            behavior: "smooth"
-          });
+            event.preventDefault();
 
-        }
-      );
 
-    });
+            target.scrollIntoView({
+
+              behavior:
+                "smooth"
+
+            });
+
+          }
+        );
+
+      }
+    );
 
 }
 
@@ -1665,44 +2376,48 @@ function initSmoothLinks() {
 function initButtonEffects() {
 
   document
+
     .querySelectorAll(
       "button, .primary-button, .secondary-button, .contact-button"
     )
-    .forEach(button => {
 
-      button.addEventListener(
-        "pointerdown",
-        () => {
+    .forEach(
+      button => {
 
-          button.style.transform =
-            "scale(.97)";
+        button.addEventListener(
+          "pointerdown",
+          () => {
 
-        }
-      );
+            button.style.transform =
+              "scale(.97)";
 
-
-      button.addEventListener(
-        "pointerup",
-        () => {
-
-          button.style.transform =
-            "";
-
-        }
-      );
+          }
+        );
 
 
-      button.addEventListener(
-        "pointerleave",
-        () => {
+        button.addEventListener(
+          "pointerup",
+          () => {
 
-          button.style.transform =
-            "";
+            button.style.transform =
+              "";
 
-        }
-      );
+          }
+        );
 
-    });
+
+        button.addEventListener(
+          "pointerleave",
+          () => {
+
+            button.style.transform =
+              "";
+
+          }
+        );
+
+      }
+    );
 
 }
 
@@ -1723,7 +2438,9 @@ function initHeaderScroll() {
 
 
   window.addEventListener(
+
     "scroll",
+
     () => {
 
       if (
@@ -1743,9 +2460,11 @@ function initHeaderScroll() {
       }
 
     },
+
     {
       passive: true
     }
+
   );
 
 }
@@ -1756,7 +2475,9 @@ function initHeaderScroll() {
    ========================================================= */
 
 document.addEventListener(
+
   "DOMContentLoaded",
+
   () => {
 
     initTheme();
@@ -1780,4 +2501,5 @@ document.addEventListener(
     );
 
   }
+
 );
