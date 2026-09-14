@@ -1,6 +1,6 @@
 /* ========================================================
    NOVERA TOOLKIT — UI ENGINE
-   Version 1.0
+   Version 1.1
    Connects:
    Calculator
    Algebra
@@ -57,12 +57,16 @@
     setupTheme();
     setupToolCards();
     setupPanels();
+
+    setupHeroActions();
+
     setupCalculator();
     setupAlgebra();
     setupGraph();
     setupPhysics();
     setupChemistry();
     setupStatistics();
+
     setupHistory();
     setupKeyboard();
     setupRevealAnimations();
@@ -138,8 +142,16 @@
       $(".theme-toggle") ||
       $("[data-theme-toggle]");
 
-    const saved =
-      localStorage.getItem("novera-toolkit-theme");
+    let saved = null;
+
+    try {
+      saved =
+        localStorage.getItem(
+          "novera-toolkit-theme"
+        );
+    } catch {
+      saved = null;
+    }
 
     if (saved === "dark") {
       document.body.classList.add("dark-theme");
@@ -151,15 +163,25 @@
 
     toggle.addEventListener("click", function () {
 
-      document.body.classList.toggle("dark-theme");
+      document.body.classList.toggle(
+        "dark-theme"
+      );
 
       const dark =
-        document.body.classList.contains("dark-theme");
+        document.body.classList.contains(
+          "dark-theme"
+        );
 
-      localStorage.setItem(
-        "novera-toolkit-theme",
-        dark ? "dark" : "light"
-      );
+      try {
+
+        localStorage.setItem(
+          "novera-toolkit-theme",
+          dark ? "dark" : "light"
+        );
+
+      } catch {
+        /* Ignore storage failures */
+      }
 
       updateThemeButton(toggle);
 
@@ -169,8 +191,12 @@
 
   function updateThemeButton(button) {
 
+    if (!button) return;
+
     const dark =
-      document.body.classList.contains("dark-theme");
+      document.body.classList.contains(
+        "dark-theme"
+      );
 
     button.setAttribute(
       "aria-label",
@@ -180,15 +206,169 @@
     );
 
     const icon =
-      button.querySelector("span") ||
-      button;
+      button.querySelector("span");
 
-    if (
-      icon &&
-      !icon.querySelector &&
-      typeof icon.textContent === "string"
-    ) {
-      icon.textContent = dark ? "☀" : "◐";
+    if (icon) {
+
+      icon.textContent =
+        dark ? "☀" : "◐";
+
+    }
+  }
+
+
+  /* ======================================================
+     HERO ACTIONS
+  ====================================================== */
+
+  function setupHeroActions() {
+
+    const start =
+      $("#startToolkit");
+
+    if (start) {
+
+      start.addEventListener(
+        "click",
+        function () {
+
+          activateTool("calculator");
+
+          scrollToWorkspace();
+
+          const input =
+            $("#calculatorInput") ||
+            $("#calcInput") ||
+            $(".calculator-input");
+
+          setTimeout(function () {
+
+            if (input) {
+              input.focus();
+            }
+
+          }, 500);
+
+        }
+      );
+    }
+
+
+    const showAll =
+      $("#showAllTools");
+
+    if (showAll) {
+
+      showAll.addEventListener(
+        "click",
+        function () {
+
+          const selector =
+            $(".tool-selector-section");
+
+          if (!selector) return;
+
+          selector.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+          });
+
+        }
+      );
+    }
+
+
+    const clearWorkspace =
+      $("#clearWorkspace");
+
+    if (clearWorkspace) {
+
+      clearWorkspace.addEventListener(
+        "click",
+        clearActiveWorkspace
+      );
+
+    }
+  }
+
+
+  function scrollToWorkspace() {
+
+    const workspace =
+      $(".workspace-section");
+
+    if (!workspace) return;
+
+    workspace.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+
+
+  function clearActiveWorkspace() {
+
+    const panel =
+      $(".tool-panel.active-panel");
+
+    if (!panel) return;
+
+    $$(
+      "input, textarea",
+      panel
+    ).forEach(function (field) {
+
+      field.value = "";
+
+      clearError(field);
+
+    });
+
+
+    const answer =
+      $(".answer-card", panel);
+
+    if (answer) {
+
+      const value =
+        $(".answer-value", answer);
+
+      const unit =
+        $(".answer-unit", answer);
+
+      const formula =
+        $(".answer-formula", answer);
+
+      if (value) {
+        value.textContent = "—";
+      }
+
+      if (unit) {
+        unit.textContent = "";
+      }
+
+      if (formula) {
+        formula.textContent = "";
+      }
+
+      answer.classList.remove(
+        "has-result"
+      );
+    }
+
+
+    const graph =
+      $(".graph-display", panel);
+
+    if (graph) {
+
+      graph.innerHTML = `
+        <div class="graph-empty-state">
+          <div class="graph-empty-icon">∿</div>
+          <p>Enter a function to generate a graph.</p>
+        </div>
+      `;
+
     }
   }
 
@@ -217,17 +397,22 @@
       card.setAttribute("role", "button");
       card.setAttribute("tabindex", "0");
 
-      card.addEventListener("keydown", function (event) {
+      card.addEventListener(
+        "keydown",
+        function (event) {
 
-        if (
-          event.key === "Enter" ||
-          event.key === " "
-        ) {
-          event.preventDefault();
-          activateTool(tool);
+          if (
+            event.key === "Enter" ||
+            event.key === " "
+          ) {
+
+            event.preventDefault();
+
+            activateTool(tool);
+          }
+
         }
-
-      });
+      );
 
     });
   }
@@ -248,49 +433,54 @@
       "statistics"
     ];
 
-    if (!validTools.includes(tool)) return;
+    if (!validTools.includes(tool)) {
+      return;
+    }
 
     state.activeTool = tool;
 
-    $$(".tool-card").forEach(function (card) {
 
-      card.classList.toggle(
-        "active",
-        (
+    $$(".tool-card").forEach(
+      function (card) {
+
+        card.classList.toggle(
+          "active",
           card.dataset.tool === tool
-        )
-      );
+        );
 
-    });
+      }
+    );
 
-    $$(".tool-panel").forEach(function (panel) {
 
-      const panelTool =
-        panel.dataset.tool ||
-        panel.id?.replace("panel-", "");
+    $$(".tool-panel").forEach(
+      function (panel) {
 
-      panel.classList.toggle(
-        "active-panel",
-        panelTool === tool
-      );
+        const panelTool =
+          panel.dataset.tool ||
+          panel.dataset.panel ||
+          panel.id?.replace(
+            "panel-",
+            ""
+          );
 
-    });
+        panel.classList.toggle(
+          "active-panel",
+          panelTool === tool
+        );
 
-    const workspace =
-      $(".workspace-section");
+      }
+    );
+
 
     if (
-      workspace &&
       window.innerWidth < 800
     ) {
-      setTimeout(function () {
 
-        workspace.scrollIntoView({
-          behavior: "smooth",
-          block: "start"
-        });
+      setTimeout(
+        scrollToWorkspace,
+        80
+      );
 
-      }, 80);
     }
   }
 
@@ -301,31 +491,40 @@
 
   function setupPanels() {
 
-    $$("[data-tool-target]").forEach(function (button) {
+    $$("[data-tool-target]").forEach(
+      function (button) {
 
-      button.addEventListener("click", function () {
+        button.addEventListener(
+          "click",
+          function () {
 
-        const target =
-          button.dataset.toolTarget;
+            activateTool(
+              button.dataset.toolTarget
+            );
 
-        activateTool(target);
+          }
+        );
 
-      });
+      }
+    );
 
-    });
 
-    $$("[data-scroll-tool]").forEach(function (button) {
+    $$("[data-scroll-tool]").forEach(
+      function (button) {
 
-      button.addEventListener("click", function () {
+        button.addEventListener(
+          "click",
+          function () {
 
-        const target =
-          button.dataset.scrollTool;
+            activateTool(
+              button.dataset.scrollTool
+            );
 
-        activateTool(target);
+          }
+        );
 
-      });
-
-    });
+      }
+    );
   }
 
 
@@ -342,52 +541,77 @@
 
     if (!input) return;
 
+
     const calculateButton =
+      $("#calculateBasic") ||
       $("#calculateCalculator") ||
       $("#calculatorCalculate") ||
       $('[data-action="calculate-calculator"]');
 
+
     const chips =
       $$(".quick-chips button");
 
-    chips.forEach(function (chip) {
 
-      chip.addEventListener("click", function () {
+    chips.forEach(
+      function (chip) {
 
-        const value =
-          chip.dataset.value ||
-          chip.textContent.trim();
+        chip.addEventListener(
+          "click",
+          function () {
 
-        if (!value) return;
+            const value =
+              chip.dataset.value ||
+              chip.dataset.expression ||
+              chip.textContent.trim();
 
-        input.value = value;
+            if (!value) return;
 
-        input.focus();
+            input.value = value;
 
-      });
+            clearError(input);
 
-    });
+            input.focus();
 
-    $$(".calculator-modes button").forEach(function (button) {
+          }
+        );
 
-      button.addEventListener("click", function () {
+      }
+    );
 
-        $$(".calculator-modes button")
-          .forEach(b =>
-            b.classList.remove("active")
+
+    $$(".calculator-modes button")
+      .forEach(
+        function (button) {
+
+          button.addEventListener(
+            "click",
+            function () {
+
+              $$(".calculator-modes button")
+                .forEach(
+                  b =>
+                    b.classList.remove(
+                      "active"
+                    )
+                );
+
+              button.classList.add(
+                "active"
+              );
+
+
+              state.calculatorMode =
+                button.dataset.mode ||
+                button.dataset.calculatorMode ||
+                "basic";
+
+            }
           );
 
-        button.classList.add("active");
+        }
+      );
 
-        state.calculatorMode =
-          button.dataset.mode ||
-          button.textContent
-            .trim()
-            .toLowerCase();
-
-      });
-
-    });
 
     if (calculateButton) {
 
@@ -398,17 +622,24 @@
 
     }
 
-    input.addEventListener("keydown", function (event) {
 
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey
-      ) {
-        event.preventDefault();
-        calculateCalculator();
+    input.addEventListener(
+      "keydown",
+      function (event) {
+
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey
+        ) {
+
+          event.preventDefault();
+
+          calculateCalculator();
+
+        }
+
       }
-
-    });
+    );
   }
 
 
@@ -421,8 +652,10 @@
 
     if (!input) return;
 
+
     const expression =
       input.value.trim();
+
 
     if (!expression) {
 
@@ -434,6 +667,7 @@
       return;
     }
 
+
     try {
 
       let result;
@@ -441,56 +675,65 @@
       const calc =
         window.NOVERA_CALCULATOR;
 
+
       if (!calc) {
+
         throw new Error(
           "Calculator engine unavailable."
         );
+
       }
 
-      /*
-       Try the engine's common interfaces.
-      */
 
       if (
-        typeof calc.evaluate === "function"
+        typeof calc.evaluate ===
+        "function"
       ) {
+
         result =
           calc.evaluate(expression);
+
       }
 
       else if (
-        typeof calc.calculate === "function"
+        typeof calc.calculate ===
+        "function"
       ) {
+
         result =
           calc.calculate(expression);
+
       }
 
       else if (
-        typeof calc.expression === "function"
+        typeof calc.expression ===
+        "function"
       ) {
+
         result =
           calc.expression(expression);
+
       }
 
       else {
+
         result =
           safeExpression(expression);
+
       }
+
 
       if (
         result &&
         typeof result === "object" &&
         "value" in result
       ) {
-        result = result.value;
+
+        result =
+          result.value;
+
       }
 
-      if (
-        typeof result !== "number" &&
-        typeof result !== "string"
-      ) {
-        result = String(result);
-      }
 
       displayAnswer(
         "calculator",
@@ -498,14 +741,16 @@
         ""
       );
 
+
       addHistory(
         expression,
         result
       );
 
+
       clearError(input);
 
-    } catch (error) {
+    } catch {
 
       showError(
         input,
@@ -529,28 +774,32 @@
         .replace(/π/g, "Math.PI")
         .replace(/\^/g, "**");
 
-    /*
-      Only permit:
-      numbers
-      operators
-      decimal points
-      parentheses
-      Math.PI
-    */
+
+    const validation =
+      clean.replace(
+        /Math\.PI/g,
+        ""
+      );
+
 
     if (
-      !/^[0-9+\-*/().\s%]*$/.test(
-        clean.replace(/Math\.PI/g, "")
-      )
+      !/^[0-9+\-*/().\s%]*$/
+        .test(validation)
     ) {
-      throw new Error("Invalid expression");
+
+      throw new Error(
+        "Invalid expression"
+      );
+
     }
+
 
     clean =
       clean.replace(
         /(\d+(?:\.\d+)?)%/g,
         "($1/100)"
       );
+
 
     const value =
       Function(
@@ -559,12 +808,18 @@
         ")"
       )();
 
+
     if (
       typeof value !== "number" ||
       !Number.isFinite(value)
     ) {
-      throw new Error("Invalid result");
+
+      throw new Error(
+        "Invalid result"
+      );
+
     }
+
 
     return value;
   }
@@ -579,30 +834,47 @@
     const buttons =
       $$(".algebra-mode-selector button");
 
-    buttons.forEach(function (button) {
 
-      button.addEventListener("click", function () {
+    buttons.forEach(
+      function (button) {
 
-        buttons.forEach(b =>
-          b.classList.remove("active")
+        button.addEventListener(
+          "click",
+          function () {
+
+            buttons.forEach(
+              b =>
+                b.classList.remove(
+                  "active"
+                )
+            );
+
+
+            button.classList.add(
+              "active"
+            );
+
+
+            state.algebraMode =
+              button.dataset.mode ||
+              button.dataset.algebraMode ||
+              "linear";
+
+
+            updateAlgebraInterface();
+
+          }
         );
 
-        button.classList.add("active");
+      }
+    );
 
-        state.algebraMode =
-          button.dataset.mode ||
-          "linear";
-
-        updateAlgebraInterface();
-
-      });
-
-    });
 
     const solveButton =
       $("#solveAlgebra") ||
       $("#algebraSolve") ||
       $('[data-action="solve-algebra"]');
+
 
     if (solveButton) {
 
@@ -612,6 +884,35 @@
       );
 
     }
+
+
+    const input =
+      $("#algebraInput") ||
+      $("#equationInput") ||
+      $(".algebra-input");
+
+
+    if (input) {
+
+      input.addEventListener(
+        "keydown",
+        function (event) {
+
+          if (
+            event.key === "Enter"
+          ) {
+
+            event.preventDefault();
+
+            solveAlgebra();
+
+          }
+
+        }
+      );
+
+    }
+
 
     updateAlgebraInterface();
   }
@@ -626,6 +927,7 @@
 
     if (!input) return;
 
+
     const placeholders = {
 
       linear:
@@ -639,7 +941,9 @@
 
       ratio:
         "Example: 2:3 = x:12"
+
     };
+
 
     input.placeholder =
       placeholders[state.algebraMode] ||
@@ -654,10 +958,13 @@
       $("#equationInput") ||
       $(".algebra-input");
 
+
     if (!input) return;
+
 
     const equation =
       input.value.trim();
+
 
     if (!equation) {
 
@@ -669,8 +976,10 @@
       return;
     }
 
+
     const algebra =
       window.NOVERA_ALGEBRA;
+
 
     if (!algebra) {
 
@@ -682,11 +991,15 @@
       return;
     }
 
+
     try {
 
       let result;
 
-      switch (state.algebraMode) {
+
+      switch (
+        state.algebraMode
+      ) {
 
         case "quadratic":
 
@@ -703,6 +1016,7 @@
 
           break;
 
+
         case "simultaneous":
 
           result =
@@ -717,6 +1031,7 @@
             );
 
           break;
+
 
         case "ratio":
 
@@ -733,6 +1048,7 @@
 
           break;
 
+
         default:
 
           result =
@@ -748,13 +1064,10 @@
 
       }
 
+
       if (
         result === undefined
       ) {
-
-        /*
-          Generic evaluation fallback.
-        */
 
         result =
           callFirst(
@@ -768,27 +1081,33 @@
 
       }
 
+
       if (
         result === undefined
       ) {
+
         throw new Error(
           "No compatible algebra method."
         );
+
       }
+
 
       displaySmartAnswer(
         "algebra",
         result
       );
 
+
       addHistory(
         equation,
         result
       );
 
+
       clearError(input);
 
-    } catch (error) {
+    } catch {
 
       showError(
         input,
@@ -808,34 +1127,78 @@
     const buttons =
       $$(".graph-options button");
 
-    buttons.forEach(function (button) {
 
-      button.addEventListener("click", function () {
+    buttons.forEach(
+      function (button) {
 
-        buttons.forEach(b =>
-          b.classList.remove("active")
+        button.addEventListener(
+          "click",
+          function () {
+
+            buttons.forEach(
+              b =>
+                b.classList.remove(
+                  "active"
+                )
+            );
+
+
+            button.classList.add(
+              "active"
+            );
+
+
+            state.graphMode =
+              button.dataset.mode ||
+              button.dataset.graphType ||
+              "auto";
+
+          }
         );
 
-        button.classList.add("active");
+      }
+    );
 
-        state.graphMode =
-          button.dataset.mode ||
-          "auto";
-
-      });
-
-    });
 
     const plotButton =
       $("#plotGraph") ||
       $("#graphPlot") ||
       $('[data-action="plot-graph"]');
 
+
     if (plotButton) {
 
       plotButton.addEventListener(
         "click",
         plotGraph
+      );
+
+    }
+
+
+    const input =
+      $("#graphInput") ||
+      $("#functionInput") ||
+      $(".graph-input");
+
+
+    if (input) {
+
+      input.addEventListener(
+        "keydown",
+        function (event) {
+
+          if (
+            event.key === "Enter"
+          ) {
+
+            event.preventDefault();
+
+            plotGraph();
+
+          }
+
+        }
       );
 
     }
@@ -849,14 +1212,20 @@
       $("#functionInput") ||
       $(".graph-input");
 
+
     const display =
       $("#graphDisplay") ||
       $(".graph-display");
 
-    if (!input || !display) return;
+
+    if (!input || !display) {
+      return;
+    }
+
 
     const expression =
       input.value.trim();
+
 
     if (!expression) {
 
@@ -868,8 +1237,10 @@
       return;
     }
 
+
     const graph =
       window.NOVERA_GRAPH;
+
 
     if (!graph) {
 
@@ -881,9 +1252,11 @@
       return;
     }
 
+
     try {
 
       let result;
+
 
       result =
         callFirst(
@@ -897,16 +1270,31 @@
           expression
         );
 
+
       if (
         result === undefined
       ) {
 
         result =
           graph.linear
-            ? graph.linear(expression)
+            ? graph.linear(
+                expression
+              )
             : undefined;
 
       }
+
+
+      if (
+        result === undefined
+      ) {
+
+        throw new Error(
+          "No graph method available."
+        );
+
+      }
+
 
       renderGraphResult(
         display,
@@ -914,9 +1302,10 @@
         expression
       );
 
+
       clearError(input);
 
-    } catch (error) {
+    } catch {
 
       showError(
         input,
@@ -933,11 +1322,6 @@
     expression
   ) {
 
-    /*
-      If engine gives HTML/SVG,
-      respect it.
-    */
-
     if (
       typeof result === "string" &&
       (
@@ -947,42 +1331,73 @@
       )
     ) {
 
-      container.innerHTML = result;
+      container.innerHTML =
+        result;
 
       return;
     }
 
-    /*
-      Otherwise create a lightweight
-      visual graph from point data.
-    */
 
     let points = [];
+
 
     if (
       Array.isArray(result)
     ) {
+
       points = result;
+
     }
 
     else if (
       result &&
-      Array.isArray(result.points)
+      Array.isArray(
+        result.points
+      )
     ) {
-      points = result.points;
+
+      points =
+        result.points;
+
     }
+
+
+    points =
+      points.filter(
+        function (point) {
+
+          return (
+            Array.isArray(point) &&
+            point.length >= 2 &&
+            Number.isFinite(
+              Number(point[0])
+            ) &&
+            Number.isFinite(
+              Number(point[1])
+            )
+          );
+
+        }
+      );
+
 
     if (!points.length) {
 
       container.innerHTML = `
         <div class="graph-empty-state">
           <div class="graph-empty-icon">∿</div>
-          <p>Graph generated for <strong>${escapeHTML(expression)}</strong></p>
+          <p>
+            Graph generated for
+            <strong>
+              ${escapeHTML(expression)}
+            </strong>
+          </p>
         </div>
       `;
 
       return;
     }
+
 
     drawSimpleGraph(
       container,
@@ -1004,17 +1419,25 @@
         container.clientWidth || 600
       );
 
+
     const height =
       Math.max(
         260,
         container.clientHeight || 340
       );
 
+
     const xs =
-      points.map(p => Number(p[0]));
+      points.map(
+        p => Number(p[0])
+      );
+
 
     const ys =
-      points.map(p => Number(p[1]));
+      points.map(
+        p => Number(p[1])
+      );
+
 
     const minX =
       Math.min(...xs);
@@ -1028,61 +1451,79 @@
     const maxY =
       Math.max(...ys);
 
+
     const pad = 32;
+
 
     const scaleX =
       (width - pad * 2) /
       ((maxX - minX) || 1);
 
+
     const scaleY =
       (height - pad * 2) /
       ((maxY - minY) || 1);
 
+
     function px(x) {
+
       return (
         pad +
         (x - minX) *
         scaleX
       );
+
     }
 
+
     function py(y) {
+
       return (
         height -
         pad -
         (y - minY) *
         scaleY
       );
+
     }
+
 
     const path =
       points
-        .map(function (p, index) {
+        .map(
+          function (p, index) {
 
-          const x =
-            px(Number(p[0]));
+            const x =
+              px(Number(p[0]));
 
-          const y =
-            py(Number(p[1]));
+            const y =
+              py(Number(p[1]));
 
-          return (
-            index === 0
-              ? `M ${x} ${y}`
-              : `L ${x} ${y}`
-          );
 
-        })
+            return (
+              index === 0
+                ? `M ${x} ${y}`
+                : `L ${x} ${y}`
+            );
+
+          }
+        )
         .join(" ");
 
+
     const zeroX =
-      minX <= 0 && maxX >= 0
+      minX <= 0 &&
+      maxX >= 0
         ? px(0)
         : null;
 
+
     const zeroY =
-      minY <= 0 && maxY >= 0
+      minY <= 0 &&
+      maxY >= 0
         ? py(0)
         : null;
+
 
     container.innerHTML = `
       <svg
@@ -1090,32 +1531,38 @@
         width="100%"
         height="100%"
         preserveAspectRatio="none"
-        aria-label="Graph of ${escapeHTML(expression)}"
+        aria-label="Graph of ${escapeHTML(
+          expression
+        )}"
       >
 
         ${
           zeroX !== null
-            ? `<line
+            ? `
+              <line
                 x1="${zeroX}"
                 y1="0"
                 x2="${zeroX}"
                 y2="${height}"
                 stroke="currentColor"
                 opacity=".18"
-              />`
+              />
+            `
             : ""
         }
 
         ${
           zeroY !== null
-            ? `<line
+            ? `
+              <line
                 x1="0"
                 y1="${zeroY}"
                 x2="${width}"
                 y2="${zeroY}"
                 stroke="currentColor"
                 opacity=".18"
-              />`
+              />
+            `
             : ""
         }
 
@@ -1156,30 +1603,47 @@
     const buttons =
       $$(".physics-selector button");
 
-    buttons.forEach(function (button) {
 
-      button.addEventListener("click", function () {
+    buttons.forEach(
+      function (button) {
 
-        buttons.forEach(b =>
-          b.classList.remove("active")
+        button.addEventListener(
+          "click",
+          function () {
+
+            buttons.forEach(
+              b =>
+                b.classList.remove(
+                  "active"
+                )
+            );
+
+
+            button.classList.add(
+              "active"
+            );
+
+
+            state.physicsMode =
+              button.dataset.mode ||
+              button.dataset.physicsMode ||
+              "speed";
+
+
+            updatePhysicsFields();
+
+          }
         );
 
-        button.classList.add("active");
+      }
+    );
 
-        state.physicsMode =
-          button.dataset.mode ||
-          "speed";
-
-        updatePhysicsFields();
-
-      });
-
-    });
 
     const calculateButton =
       $("#calculatePhysics") ||
       $("#physicsCalculate") ||
       $('[data-action="calculate-physics"]');
+
 
     if (calculateButton) {
 
@@ -1189,6 +1653,7 @@
       );
 
     }
+
 
     updatePhysicsFields();
   }
@@ -1200,66 +1665,131 @@
       $("#physicsFields") ||
       $(".physics-fields");
 
+
     if (!fields) return;
+
 
     const configs = {
 
       speed: [
-        ["distance", "Distance", "e.g. 100", "m"],
-        ["time", "Time", "e.g. 5", "s"]
+        [
+          "distance",
+          "Distance",
+          "e.g. 100",
+          "m"
+        ],
+        [
+          "time",
+          "Time",
+          "e.g. 5",
+          "s"
+        ]
       ],
+
 
       force: [
-        ["mass", "Mass", "e.g. 10", "kg"],
-        ["acceleration", "Acceleration", "e.g. 9.8", "m/s²"]
+        [
+          "mass",
+          "Mass",
+          "e.g. 10",
+          "kg"
+        ],
+        [
+          "acceleration",
+          "Acceleration",
+          "e.g. 9.8",
+          "m/s²"
+        ]
       ],
+
 
       energy: [
-        ["mass", "Mass", "e.g. 5", "kg"],
-        ["velocity", "Velocity", "e.g. 10", "m/s"]
+        [
+          "mass",
+          "Mass",
+          "e.g. 5",
+          "kg"
+        ],
+        [
+          "velocity",
+          "Velocity",
+          "e.g. 10",
+          "m/s"
+        ]
       ],
+
 
       power: [
-        ["energy", "Energy", "e.g. 500", "J"],
-        ["time", "Time", "e.g. 10", "s"]
+        [
+          "energy",
+          "Energy",
+          "e.g. 500",
+          "J"
+        ],
+        [
+          "time",
+          "Time",
+          "e.g. 10",
+          "s"
+        ]
       ],
 
+
       electricity: [
-        ["voltage", "Voltage", "e.g. 12", "V"],
-        ["resistance", "Resistance", "e.g. 6", "Ω"]
+        [
+          "voltage",
+          "Voltage",
+          "e.g. 12",
+          "V"
+        ],
+        [
+          "resistance",
+          "Resistance",
+          "e.g. 6",
+          "Ω"
+        ]
       ]
+
     };
+
 
     const config =
       configs[state.physicsMode] ||
       configs.speed;
 
+
     fields.innerHTML =
       config
-        .map(function (item) {
+        .map(
+          function (item) {
 
-          return `
-            <div class="input-group">
-              <label for="physics-${item[0]}">
-                ${item[1]}
-              </label>
+            return `
+              <div class="input-group">
 
-              <input
-                id="physics-${item[0]}"
-                class="main-input physics-field"
-                data-field="${item[0]}"
-                type="number"
-                inputmode="decimal"
-                placeholder="${item[2]}"
-              >
+                <label
+                  for="physics-${item[0]}"
+                >
+                  ${item[1]}
+                </label>
 
-              <span class="input-help">
-                Unit: ${item[3]}
-              </span>
-            </div>
-          `;
+                <input
+                  id="physics-${item[0]}"
+                  class="main-input physics-field"
+                  data-field="${item[0]}"
+                  type="number"
+                  inputmode="decimal"
+                  placeholder="${item[2]}"
+                >
 
-        })
+                <span class="input-help">
+                  Unit: ${item[3]}
+                </span>
+
+              </div>
+            `;
+
+          }
+        )
         .join("");
   }
 
@@ -1269,25 +1799,59 @@
     const fields =
       $$(".physics-field");
 
+
+    if (!fields.length) return;
+
+
     const values = {};
 
-    fields.forEach(function (field) {
+
+    for (
+      const field of fields
+    ) {
+
+      if (
+        field.value.trim() === ""
+      ) {
+
+        showError(
+          field,
+          "Enter a value first."
+        );
+
+        return;
+      }
+
 
       values[field.dataset.field] =
         Number(field.value);
 
-    });
+    }
+
 
     const engine =
       window.NOVERA_PHYSICS;
 
-    if (!engine) return;
+
+    if (!engine) {
+
+      showError(
+        fields[0],
+        "Physics engine unavailable."
+      );
+
+      return;
+    }
+
 
     try {
 
       let result;
 
-      switch (state.physicsMode) {
+
+      switch (
+        state.physicsMode
+      ) {
 
         case "force":
 
@@ -1301,17 +1865,22 @@
 
           break;
 
+
         case "energy":
 
           result =
             callFirst(
               engine,
-              ["kineticEnergy", "energy"],
+              [
+                "kineticEnergy",
+                "energy"
+              ],
               values.mass,
               values.velocity
             );
 
           break;
+
 
         case "power":
 
@@ -1325,6 +1894,7 @@
 
           break;
 
+
         case "electricity":
 
           result =
@@ -1336,6 +1906,7 @@
             );
 
           break;
+
 
         default:
 
@@ -1349,35 +1920,38 @@
 
       }
 
+
       if (
         result === undefined
       ) {
+
         throw new Error();
+
       }
+
 
       displaySmartAnswer(
         "physics",
         result
       );
 
+
       addHistory(
         state.physicsMode,
         result
       );
 
-    } catch (error) {
 
-      const first =
-        fields[0];
+      fields.forEach(
+        clearError
+      );
 
-      if (first) {
+    } catch {
 
-        showError(
-          first,
-          "Check the numbers and units."
-        );
-
-      }
+      showError(
+        fields[0],
+        "Check the numbers and units."
+      );
 
     }
   }
@@ -1392,30 +1966,47 @@
     const buttons =
       $$(".chemistry-selector button");
 
-    buttons.forEach(function (button) {
 
-      button.addEventListener("click", function () {
+    buttons.forEach(
+      function (button) {
 
-        buttons.forEach(b =>
-          b.classList.remove("active")
+        button.addEventListener(
+          "click",
+          function () {
+
+            buttons.forEach(
+              b =>
+                b.classList.remove(
+                  "active"
+                )
+            );
+
+
+            button.classList.add(
+              "active"
+            );
+
+
+            state.chemistryMode =
+              button.dataset.mode ||
+              button.dataset.chemistryMode ||
+              "moles";
+
+
+            updateChemistryFields();
+
+          }
         );
 
-        button.classList.add("active");
+      }
+    );
 
-        state.chemistryMode =
-          button.dataset.mode ||
-          "moles";
-
-        updateChemistryFields();
-
-      });
-
-    });
 
     const calculateButton =
       $("#calculateChemistry") ||
       $("#chemistryCalculate") ||
       $('[data-action="calculate-chemistry"]');
+
 
     if (calculateButton) {
 
@@ -1425,6 +2016,7 @@
       );
 
     }
+
 
     updateChemistryFields();
   }
@@ -1436,67 +2028,137 @@
       $("#chemistryFields") ||
       $(".chemistry-fields");
 
+
     if (!fields) return;
+
 
     const configs = {
 
       moles: [
-        ["mass", "Mass", "e.g. 18", "g"],
-        ["molarMass", "Molar mass", "e.g. 18", "g/mol"]
+        [
+          "mass",
+          "Mass",
+          "e.g. 18",
+          "g"
+        ],
+        [
+          "molarMass",
+          "Molar mass",
+          "e.g. 18",
+          "g/mol"
+        ]
       ],
+
 
       molarity: [
-        ["moles", "Moles", "e.g. 0.5", "mol"],
-        ["volume", "Volume", "e.g. 2", "L"]
+        [
+          "moles",
+          "Moles",
+          "e.g. 0.5",
+          "mol"
+        ],
+        [
+          "volume",
+          "Volume",
+          "e.g. 2",
+          "L"
+        ]
       ],
+
 
       gas: [
-        ["pressure", "Pressure", "e.g. 101325", "Pa"],
-        ["volume", "Volume", "e.g. 0.0224", "m³"],
-        ["temperature", "Temperature", "e.g. 273.15", "K"]
+        [
+          "pressure",
+          "Pressure",
+          "e.g. 101325",
+          "Pa"
+        ],
+        [
+          "volume",
+          "Volume",
+          "e.g. 0.0224",
+          "m³"
+        ],
+        [
+          "temperature",
+          "Temperature",
+          "e.g. 273.15",
+          "K"
+        ]
       ],
+
 
       ph: [
-        ["concentration", "Concentration", "e.g. 0.001", "mol/L"]
+        [
+          "concentration",
+          "Concentration",
+          "e.g. 0.001",
+          "mol/L"
+        ]
       ],
 
+
       heat: [
-        ["mass", "Mass", "e.g. 2", "kg"],
-        ["specificHeat", "Specific heat", "e.g. 4186", "J/kg·K"],
-        ["deltaT", "Temperature change", "e.g. 10", "K"]
+        [
+          "mass",
+          "Mass",
+          "e.g. 2",
+          "kg"
+        ],
+        [
+          "specificHeat",
+          "Specific heat",
+          "e.g. 4186",
+          "J/kg·K"
+        ],
+        [
+          "deltaT",
+          "Temperature change",
+          "e.g. 10",
+          "K"
+        ]
       ]
+
     };
+
 
     const config =
       configs[state.chemistryMode] ||
       configs.moles;
 
+
     fields.innerHTML =
       config
-        .map(function (item) {
+        .map(
+          function (item) {
 
-          return `
-            <div class="input-group">
-              <label for="chemistry-${item[0]}">
-                ${item[1]}
-              </label>
+            return `
+              <div class="input-group">
 
-              <input
-                id="chemistry-${item[0]}"
-                class="main-input chemistry-field"
-                data-field="${item[0]}"
-                type="number"
-                inputmode="decimal"
-                placeholder="${item[2]}"
-              >
+                <label
+                  for="chemistry-${item[0]}"
+                >
+                  ${item[1]}
+                </label>
 
-              <span class="input-help">
-                Unit: ${item[3]}
-              </span>
-            </div>
-          `;
+                <input
+                  id="chemistry-${item[0]}"
+                  class="main-input chemistry-field"
+                  data-field="${item[0]}"
+                  type="number"
+                  inputmode="decimal"
+                  placeholder="${item[2]}"
+                >
 
-        })
+                <span class="input-help">
+                  Unit: ${item[3]}
+                </span>
+
+              </div>
+            `;
+
+          }
+        )
         .join("");
   }
 
@@ -1506,25 +2168,59 @@
     const fields =
       $$(".chemistry-field");
 
+
+    if (!fields.length) return;
+
+
     const values = {};
 
-    fields.forEach(function (field) {
+
+    for (
+      const field of fields
+    ) {
+
+      if (
+        field.value.trim() === ""
+      ) {
+
+        showError(
+          field,
+          "Enter a value first."
+        );
+
+        return;
+      }
+
 
       values[field.dataset.field] =
         Number(field.value);
 
-    });
+    }
+
 
     const engine =
       window.NOVERA_CHEMISTRY;
 
-    if (!engine) return;
+
+    if (!engine) {
+
+      showError(
+        fields[0],
+        "Chemistry engine unavailable."
+      );
+
+      return;
+    }
+
 
     try {
 
       let result;
 
-      switch (state.chemistryMode) {
+
+      switch (
+        state.chemistryMode
+      ) {
 
         case "molarity":
 
@@ -1537,6 +2233,7 @@
             );
 
           break;
+
 
         case "gas":
 
@@ -1551,6 +2248,7 @@
 
           break;
 
+
         case "ph":
 
           result =
@@ -1561,6 +2259,7 @@
             );
 
           break;
+
 
         case "heat":
 
@@ -1575,6 +2274,7 @@
 
           break;
 
+
         default:
 
           result =
@@ -1584,37 +2284,41 @@
               values.mass,
               values.molarMass
             );
+
       }
+
 
       if (
         result === undefined
       ) {
+
         throw new Error();
+
       }
+
 
       displaySmartAnswer(
         "chemistry",
         result
       );
 
+
       addHistory(
         state.chemistryMode,
         result
       );
 
-    } catch (error) {
 
-      const first =
-        fields[0];
+      fields.forEach(
+        clearError
+      );
 
-      if (first) {
+    } catch {
 
-        showError(
-          first,
-          "Check the chemistry values."
-        );
-
-      }
+      showError(
+        fields[0],
+        "Check the chemistry values."
+      );
 
     }
   }
@@ -1629,28 +2333,45 @@
     const buttons =
       $$(".statistics-selector button");
 
-    buttons.forEach(function (button) {
 
-      button.addEventListener("click", function () {
+    buttons.forEach(
+      function (button) {
 
-        buttons.forEach(b =>
-          b.classList.remove("active")
+        button.addEventListener(
+          "click",
+          function () {
+
+            buttons.forEach(
+              b =>
+                b.classList.remove(
+                  "active"
+                )
+            );
+
+
+            button.classList.add(
+              "active"
+            );
+
+
+            state.statisticsMode =
+              button.dataset.mode ||
+              button.dataset.statisticsMode ||
+              "mean";
+
+          }
         );
 
-        button.classList.add("active");
+      }
+    );
 
-        state.statisticsMode =
-          button.dataset.mode ||
-          "mean";
-
-      });
-
-    });
 
     const analyseButton =
+      $("#calculateStatistics") ||
       $("#analyseStatistics") ||
       $("#statisticsAnalyse") ||
       $('[data-action="analyse-statistics"]');
+
 
     if (analyseButton) {
 
@@ -1671,10 +2392,13 @@
       $(".statistics-input") ||
       $(".data-input");
 
+
     if (!input) return;
+
 
     const raw =
       input.value.trim();
+
 
     if (!raw) {
 
@@ -1686,8 +2410,10 @@
       return;
     }
 
+
     const data =
       parseNumbers(raw);
+
 
     if (!data.length) {
 
@@ -1699,16 +2425,30 @@
       return;
     }
 
+
     const engine =
       window.NOVERA_STATISTICS;
 
-    if (!engine) return;
+
+    if (!engine) {
+
+      showError(
+        input,
+        "Statistics engine unavailable."
+      );
+
+      return;
+    }
+
 
     try {
 
       let result;
 
-      switch (state.statisticsMode) {
+
+      switch (
+        state.statisticsMode
+      ) {
 
         case "median":
 
@@ -1721,6 +2461,7 @@
 
           break;
 
+
         case "mode":
 
           result =
@@ -1731,6 +2472,7 @@
             );
 
           break;
+
 
         case "range":
 
@@ -1743,6 +2485,7 @@
 
           break;
 
+
         case "std":
 
         case "standardDeviation":
@@ -1750,41 +2493,55 @@
           result =
             callFirst(
               engine,
-              ["standardDeviation", "stdDev"],
+              [
+                "standardDeviation",
+                "stdDev"
+              ],
               data
             );
 
           break;
+
 
         default:
 
           result =
             callFirst(
               engine,
-              ["mean", "average"],
+              [
+                "mean",
+                "average"
+              ],
               data
             );
+
       }
+
 
       if (
         result === undefined
       ) {
+
         throw new Error();
+
       }
+
 
       displaySmartAnswer(
         "statistics",
         result
       );
 
+
       addHistory(
         state.statisticsMode,
         result
       );
 
+
       clearError(input);
 
-    } catch (error) {
+    } catch {
 
       showError(
         input,
@@ -1808,18 +2565,28 @@
     const panel =
       findPanel(tool);
 
+
     if (!panel) return;
+
 
     const card =
       $(".answer-card", panel);
 
+
     if (!card) return;
+
 
     const valueElement =
       $(".answer-value", card);
 
+
     const unitElement =
       $(".answer-unit", card);
+
+
+    const formula =
+      $(".answer-formula", card);
+
 
     if (valueElement) {
 
@@ -1828,21 +2595,24 @@
 
     }
 
+
     if (unitElement) {
 
       unitElement.textContent =
         unit || "";
+
     }
 
-    card.classList.remove(
-      "has-result"
-    );
 
-    void card.offsetWidth;
+    if (formula) {
 
-    card.classList.add(
-      "has-result"
-    );
+      formula.textContent =
+        "";
+
+    }
+
+
+    animateAnswer(card);
   }
 
 
@@ -1854,21 +2624,28 @@
     const panel =
       findPanel(tool);
 
+
     if (!panel) return;
+
 
     const card =
       $(".answer-card", panel);
 
+
     if (!card) return;
+
 
     const valueElement =
       $(".answer-value", card);
 
+
     const unitElement =
       $(".answer-unit", card);
 
+
     const formula =
       $(".answer-formula", card);
+
 
     if (
       result &&
@@ -1881,6 +2658,7 @@
         result.answer ??
         result.solution;
 
+
       if (valueElement) {
 
         valueElement.textContent =
@@ -1889,7 +2667,9 @@
               ? main
               : JSON.stringify(result)
           );
+
       }
+
 
       if (unitElement) {
 
@@ -1897,7 +2677,9 @@
           result.unit ||
           result.units ||
           "";
+
       }
+
 
       if (formula) {
 
@@ -1914,20 +2696,33 @@
 
         valueElement.textContent =
           formatResult(result);
+
       }
+
 
       if (unitElement) {
 
         unitElement.textContent =
           "";
+
       }
+
 
       if (formula) {
 
         formula.textContent =
           "";
+
       }
+
     }
+
+
+    animateAnswer(card);
+  }
+
+
+  function animateAnswer(card) {
 
     card.classList.remove(
       "has-result"
@@ -1947,7 +2742,12 @@
       document.querySelector(
         `.tool-panel[data-tool="${tool}"]`
       ) ||
-      byId(`panel-${tool}`) ||
+      document.querySelector(
+        `.tool-panel[data-panel="${tool}"]`
+      ) ||
+      byId(
+        `panel-${tool}`
+      ) ||
       document.querySelector(
         `.tool-panel.${tool}-panel`
       )
@@ -1962,10 +2762,11 @@
   function setupHistory() {
 
     const clear =
-      $("#clearHistory") ||
-      $(".clear-button");
+      $("#clearHistory");
+
 
     if (!clear) return;
+
 
     clear.addEventListener(
       "click",
@@ -2000,8 +2801,13 @@
 
     });
 
+
     state.history =
-      state.history.slice(0, 20);
+      state.history.slice(
+        0,
+        20
+      );
+
 
     saveHistory();
 
@@ -2015,7 +2821,9 @@
       $("#historyList") ||
       $(".history-list");
 
+
     if (!list) return;
+
 
     if (!state.history.length) {
 
@@ -2029,23 +2837,32 @@
       return;
     }
 
+
     list.innerHTML =
       state.history
-        .map(function (item) {
+        .map(
+          function (item) {
 
-          return `
-            <div class="history-item">
-              <span class="history-expression">
-                ${escapeHTML(item.expression)}
-              </span>
+            return `
+              <div class="history-item">
 
-              <span class="history-result">
-                ${escapeHTML(item.result)}
-              </span>
-            </div>
-          `;
+                <span class="history-expression">
+                  ${escapeHTML(
+                    item.expression
+                  )}
+                </span>
 
-        })
+                <span class="history-result">
+                  ${escapeHTML(
+                    item.result
+                  )}
+                </span>
+
+              </div>
+            `;
+
+          }
+        )
         .join("");
   }
 
@@ -2054,15 +2871,32 @@
 
     try {
 
-      return JSON.parse(
-        localStorage.getItem(
-          "novera-toolkit-history"
-        ) || "[]"
+      const data =
+        JSON.parse(
+          localStorage.getItem(
+            "novera-toolkit-history"
+          ) || "[]"
+        );
+
+
+      if (
+        !Array.isArray(data)
+      ) {
+
+        return [];
+
+      }
+
+
+      return data.slice(
+        0,
+        20
       );
 
     } catch {
 
       return [];
+
     }
   }
 
@@ -2073,7 +2907,9 @@
 
       localStorage.setItem(
         "novera-toolkit-history",
-        JSON.stringify(state.history)
+        JSON.stringify(
+          state.history
+        )
       );
 
     } catch {
@@ -2092,42 +2928,51 @@
       "keydown",
       function (event) {
 
-        /*
-          Ctrl/Cmd + K
-          focuses current tool input.
-        */
-
         if (
-          (event.ctrlKey || event.metaKey) &&
+          (
+            event.ctrlKey ||
+            event.metaKey
+          ) &&
           event.key.toLowerCase() === "k"
         ) {
 
           event.preventDefault();
 
+
           const activePanel =
             $(".tool-panel.active-panel");
 
+
           if (!activePanel) return;
+
 
           const input =
             $("input, textarea", activePanel);
 
-          if (input) input.focus();
+
+          if (input) {
+
+            input.focus();
+
+          }
         }
 
-        /*
-          Escape removes focus.
-        */
 
-        if (event.key === "Escape") {
+        if (
+          event.key === "Escape"
+        ) {
 
           if (
             document.activeElement &&
-            typeof document.activeElement.blur ===
-            "function"
+            typeof document
+              .activeElement
+              .blur === "function"
           ) {
+
             document.activeElement.blur();
+
           }
+
         }
 
       }
@@ -2144,18 +2989,24 @@
     const elements =
       $$(".reveal");
 
+
     if (!elements.length) return;
+
 
     if (
       !("IntersectionObserver" in window)
     ) {
 
       elements.forEach(
-        el => el.classList.add("visible")
+        el =>
+          el.classList.add(
+            "visible"
+          )
       );
 
       return;
     }
+
 
     const observer =
       new IntersectionObserver(
@@ -2172,9 +3023,11 @@
                   "visible"
                 );
 
+
                 observer.unobserve(
                   entry.target
                 );
+
               }
 
             }
@@ -2186,8 +3039,10 @@
         }
       );
 
+
     elements.forEach(
-      el => observer.observe(el)
+      el =>
+        observer.observe(el)
     );
   }
 
@@ -2208,12 +3063,18 @@
 
       if (
         object &&
-        typeof object[method] === "function"
+        typeof object[method] ===
+        "function"
       ) {
 
-        return object[method](...args);
+        return object[method](
+          ...args
+        );
+
       }
+
     }
+
 
     return undefined;
   }
@@ -2225,16 +3086,24 @@
       value === null ||
       value === undefined
     ) {
+
       return "—";
+
     }
+
 
     if (
       typeof value === "number"
     ) {
 
-      if (!Number.isFinite(value)) {
+      if (
+        !Number.isFinite(value)
+      ) {
+
         return "Undefined";
+
       }
+
 
       if (
         Math.abs(value) >= 1e9 ||
@@ -2245,12 +3114,16 @@
       ) {
 
         return value.toExponential(6);
+
       }
+
 
       return Number(
         value.toFixed(10)
       ).toString();
+
     }
+
 
     if (
       Array.isArray(value)
@@ -2259,19 +3132,23 @@
       return value
         .map(formatResult)
         .join(", ");
+
     }
+
 
     if (
       typeof value === "object"
     ) {
 
-      return (
+      return String(
         value.value ??
         value.result ??
         value.answer ??
         JSON.stringify(value)
       );
+
     }
+
 
     return String(value);
   }
@@ -2293,20 +3170,28 @@
 
     if (!element) return;
 
+
     clearError(element);
+
 
     element.classList.add(
       "has-error"
     );
 
+
     const messageElement =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
+
 
     messageElement.className =
       "error-message";
 
+
     messageElement.textContent =
       message;
+
 
     if (
       element.parentElement
@@ -2315,13 +3200,18 @@
       element.parentElement.appendChild(
         messageElement
       );
+
     }
 
-    setTimeout(function () {
 
-      clearError(element);
+    setTimeout(
+      function () {
 
-    }, 3500);
+        clearError(element);
+
+      },
+      3500
+    );
   }
 
 
@@ -2329,20 +3219,27 @@
 
     if (!element) return;
 
+
     element.classList.remove(
       "has-error"
     );
 
+
     const parent =
       element.parentElement;
 
+
     if (!parent) return;
+
 
     const error =
       $(".error-message", parent);
 
+
     if (error) {
+
       error.remove();
+
     }
   }
 
@@ -2350,11 +3247,26 @@
   function escapeHTML(value) {
 
     return String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(
+        /&/g,
+        "&amp;"
+      )
+      .replace(
+        /</g,
+        "&lt;"
+      )
+      .replace(
+        />/g,
+        "&gt;"
+      )
+      .replace(
+        /"/g,
+        "&quot;"
+      )
+      .replace(
+        /'/g,
+        "&#039;"
+      );
   }
 
 
