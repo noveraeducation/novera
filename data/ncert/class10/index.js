@@ -1,0 +1,3 @@
+const NCERT_CLASS_10 = {};
+
+window.NCERT_CLASS_10 = NCERT_CLASS_10;
