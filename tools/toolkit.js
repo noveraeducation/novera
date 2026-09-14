@@ -1,6 +1,6 @@
 /* =========================================================
    NOVERA TOOLKIT CONTROLLER
-   V1.0 — STABLE CONTROLLER
+   V1.1 — STABLE CONTROLLER
 ========================================================= */
 
 (function () {
@@ -27,6 +27,7 @@
   ];
 
   const HISTORY_KEY = "novera_toolkit_history";
+  const THEME_KEY = "novera_theme";
 
   /* ========================================================
      HELPERS
@@ -40,18 +41,6 @@
     return Array.from(document.querySelectorAll(selector));
   }
 
-  function show(el) {
-    if (el) el.hidden = false;
-  }
-
-  function hide(el) {
-    if (el) el.hidden = true;
-  }
-
-  function text(el, value) {
-    if (el) el.textContent = value;
-  }
-
   function safeNumber(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
@@ -62,7 +51,9 @@
       return String(value);
     }
 
-    if (Math.abs(value) < 1e-12) return "0";
+    if (Math.abs(value) < 1e-12) {
+      return "0";
+    }
 
     return Number(value.toFixed(10)).toString();
   }
@@ -81,11 +72,15 @@
     }
 
     if (typeof result === "object") {
+
       if ("result" in result) {
         return formatResult(result.result);
       }
 
-      if ("value" in result && typeof result.value !== "object") {
+      if (
+        "value" in result &&
+        typeof result.value !== "object"
+      ) {
         return formatResult(result.value);
       }
 
@@ -95,7 +90,7 @@
             return `${key}: ${formatResult(value)}`;
           })
           .join("\n");
-      } catch (e) {
+      } catch (error) {
         return String(result);
       }
     }
@@ -107,8 +102,11 @@
     if (!container) return;
 
     container.textContent = formatResult(result);
+
     container.classList.remove("answer-pop");
+
     void container.offsetWidth;
+
     container.classList.add("answer-pop");
   }
 
@@ -116,6 +114,7 @@
     if (!panel) return null;
 
     return (
+      panel.querySelector(".answer-value") ||
       panel.querySelector(".result-value") ||
       panel.querySelector(".tool-result") ||
       panel.querySelector(".result") ||
@@ -127,17 +126,27 @@
   function showError(message, input) {
     if (!input) return;
 
-    const old = input.parentElement?.querySelector(".tool-error");
-    if (old) old.remove();
+    const parent = input.parentElement;
+
+    if (!parent) return;
+
+    const old = parent.querySelector(".tool-error");
+
+    if (old) {
+      old.remove();
+    }
 
     const error = document.createElement("div");
+
     error.className = "tool-error";
     error.textContent = message;
 
-    input.parentElement?.appendChild(error);
+    parent.appendChild(error);
 
     setTimeout(() => {
-      error.remove();
+      if (error.parentElement) {
+        error.remove();
+      }
     }, 3500);
   }
 
@@ -153,7 +162,7 @@
         const parsed = JSON.parse(saved);
 
         if (Array.isArray(parsed)) {
-          state.history = parsed;
+          state.history = parsed.slice(0, 50);
         }
       }
     } catch (error) {
@@ -170,19 +179,20 @@
         JSON.stringify(state.history.slice(0, 50))
       );
     } catch (error) {
-      // Ignore storage errors.
+      /* Storage unavailable — continue normally. */
     }
   }
 
   function addHistory(tool, input, result) {
     const item = {
-      tool,
-      input,
+      tool: tool,
+      input: String(input),
       result: formatResult(result),
       time: new Date().toLocaleTimeString()
     };
 
     state.history.unshift(item);
+
     state.history = state.history.slice(0, 50);
 
     saveHistory();
@@ -191,39 +201,52 @@
 
   function renderHistory() {
     const list = $("#historyList");
+
     if (!list) return;
 
     list.innerHTML = "";
 
     if (!state.history.length) {
+
       const empty = document.createElement("div");
+
       empty.className = "history-empty";
+
       empty.textContent = "No calculations yet.";
+
       list.appendChild(empty);
+
       return;
     }
 
     state.history.forEach((item) => {
+
       const row = document.createElement("div");
+
       row.className = "history-item";
 
       const top = document.createElement("div");
+
       top.className = "history-item-top";
 
       const tool = document.createElement("strong");
+
       tool.textContent = item.tool;
 
       const time = document.createElement("span");
+
       time.textContent = item.time;
 
       top.appendChild(tool);
       top.appendChild(time);
 
       const input = document.createElement("div");
+
       input.className = "history-input";
       input.textContent = item.input;
 
       const result = document.createElement("div");
+
       result.className = "history-result";
       result.textContent = item.result;
 
@@ -245,6 +268,17 @@
     renderHistory();
   }
 
+  function setupHistory() {
+    const button = $("#clearHistory");
+
+    if (button) {
+      button.addEventListener(
+        "click",
+        clearHistory
+      );
+    }
+  }
+
   /* ========================================================
      TOOL ACTIVATION
   ======================================================== */
@@ -252,56 +286,112 @@
   function findPanel(tool) {
     return (
       document.querySelector(`[data-panel="${tool}"]`) ||
-      document.querySelector(`[data-tool="${tool}"]`) ||
       document.getElementById(`panel-${tool}`)
     );
   }
 
-  function activateTool(tool) {
-    if (!TOOL_NAMES.includes(tool)) return;
+  function updateWorkspaceTitle(tool) {
+    const title = $("#workspaceTitle");
+
+    if (!title) return;
+
+    const names = {
+      calculator: "Calculator",
+      algebra: "Algebra",
+      graph: "Graphing",
+      physics: "Physics",
+      chemistry: "Chemistry",
+      statistics: "Statistics"
+    };
+
+    title.textContent =
+      names[tool] || "Toolkit";
+  }
+
+  function activateTool(tool, shouldScroll) {
+    if (!TOOL_NAMES.includes(tool)) {
+      return;
+    }
 
     state.activeTool = tool;
 
     $$(".tool-card").forEach((card) => {
-      const cardTool = card.dataset.tool;
 
-      card.classList.toggle("active", cardTool === tool);
+      const active =
+        card.dataset.tool === tool;
+
+      card.classList.toggle(
+        "active",
+        active
+      );
+
       card.setAttribute(
         "aria-selected",
-        cardTool === tool ? "true" : "false"
+        active ? "true" : "false"
       );
     });
 
     TOOL_NAMES.forEach((name) => {
+
       const panel = findPanel(name);
 
       if (!panel) return;
 
-      panel.classList.toggle("active-panel", name === tool);
-      panel.classList.toggle("active", name === tool);
+      const active = name === tool;
 
-      if (name === tool) {
+      panel.classList.toggle(
+        "active-panel",
+        active
+      );
+
+      panel.classList.toggle(
+        "active",
+        active
+      );
+
+      if (active) {
         panel.removeAttribute("hidden");
       } else {
-        panel.setAttribute("hidden", "");
+        panel.setAttribute(
+          "hidden",
+          ""
+        );
       }
     });
 
-    const workspace = $(".tool-workspace");
+    updateWorkspaceTitle(tool);
 
-    if (workspace) {
-      workspace.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
+    if (shouldScroll) {
+
+      const workspace =
+        $("#workspace") ||
+        $(".workspace-section");
+
+      if (workspace) {
+
+        workspace.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+
+      }
     }
   }
 
   function setupToolCards() {
     $$(".tool-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        activateTool(card.dataset.tool);
-      });
+
+      card.addEventListener(
+        "click",
+        () => {
+
+          activateTool(
+            card.dataset.tool,
+            true
+          );
+
+        }
+      );
     });
   }
 
@@ -310,54 +400,87 @@
   ======================================================== */
 
   function safeExpression(expression) {
-    let value = String(expression || "").trim();
+
+    let value =
+      String(expression || "")
+        .trim();
 
     if (!value) {
-      throw new Error("Enter a calculation.");
+      throw new Error(
+        "Enter a calculation."
+      );
     }
 
     value = value
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
       .replace(/π/g, "Math.PI")
       .replace(/\^/g, "**")
-      .replace(/(\d+(?:\.\d+)?)%/g, "($1/100)");
-
-    if (!/^[0-9+\-*/().%\sA-Za-z_*]+$/.test(value)) {
-      throw new Error("Invalid expression.");
-    }
+      .replace(/²/g, "**2")
+      .replace(/³/g, "**3")
+      .replace(
+        /(\d+(?:\.\d+)?)%/g,
+        "($1/100)"
+      );
 
     if (
-      value.includes("Math.") === false &&
-      /[A-Za-z]/.test(value)
+      !/^[0-9+\-*/().%\sA-Za-z_*]+$/.test(
+        value
+      )
     ) {
-      throw new Error("Invalid expression.");
+      throw new Error(
+        "Invalid expression."
+      );
     }
 
-    const allowed = value.replace(/Math\.(PI|E)/g, "");
+    const allowed =
+      value.replace(
+        /Math\.(PI|E)/g,
+        ""
+      );
 
     if (/[A-Za-z]/.test(allowed)) {
-      throw new Error("Invalid expression.");
+      throw new Error(
+        "Invalid expression."
+      );
     }
 
-    const result = Function(
-      `"use strict"; return (${value});`
-    )();
+    const result =
+      Function(
+        `"use strict"; return (${value});`
+      )();
 
-    if (!Number.isFinite(result)) {
-      throw new Error("Result is not finite.");
+    if (
+      typeof result !== "number" ||
+      !Number.isFinite(result)
+    ) {
+      throw new Error(
+        "Result is not finite."
+      );
     }
 
     return result;
   }
 
   function calculateCalculator() {
-    const input = $("#calculatorInput");
+
+    const input =
+      $("#calculatorInput");
+
     if (!input) return;
 
     try {
-      const expression = input.value.trim();
+
+      const expression =
+        input.value.trim();
 
       if (!expression) {
-        showError("Enter something to calculate.", input);
+
+        showError(
+          "Enter something to calculate.",
+          input
+        );
+
         return;
       }
 
@@ -365,94 +488,148 @@
 
       if (
         window.NOVERA_CALCULATOR &&
-        typeof window.NOVERA_CALCULATOR.calculate === "function"
+        typeof
+          window.NOVERA_CALCULATOR.calculate ===
+            "function"
       ) {
-        result = window.NOVERA_CALCULATOR.calculate(expression);
+
+        result =
+          window.NOVERA_CALCULATOR.calculate(
+            expression
+          );
+
       } else {
-        result = safeExpression(expression);
+
+        result =
+          safeExpression(
+            expression
+          );
+
       }
 
-      const panel = $("#panel-calculator");
-      const answer = getAnswerBox(panel);
+      displayAnswer(
+        getAnswerBox(
+          $("#panel-calculator")
+        ),
+        result
+      );
 
-      displayAnswer(answer, result);
+      addHistory(
+        "Calculator",
+        expression,
+        result
+      );
 
-      addHistory("Calculator", expression, result);
     } catch (error) {
+
       showError(
-        error.message || "Could not calculate.",
+        error.message ||
+          "Could not calculate.",
         input
       );
     }
   }
 
   function setupCalculator() {
+
     const button =
+      $("#calculateBasic") ||
       $("#calculateCalculator") ||
       $("#calculatorCalculate") ||
-      $("#calculateBasic") ||
       $('[data-action="calculate-calculator"]');
 
     if (button) {
-      button.addEventListener("click", calculateCalculator);
+
+      button.addEventListener(
+        "click",
+        calculateCalculator
+      );
     }
 
-    const input = $("#calculatorInput");
+    const input =
+      $("#calculatorInput");
 
     if (input) {
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          calculateCalculator();
-        }
-      });
-    }
 
-    $$(".calculator-mode-selector [data-calculator-mode], .calculator-mode-selector [data-mode]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          const mode =
-            button.dataset.calculatorMode ||
-            button.dataset.mode;
+      input.addEventListener(
+        "keydown",
+        (event) => {
 
-          if (mode) {
-            state.calculatorMode = mode;
+          if (
+            event.key === "Enter"
+          ) {
+
+            event.preventDefault();
+
+            calculateCalculator();
           }
-
-          $$(".calculator-mode-selector button").forEach((b) => {
-            b.classList.toggle("active", b === button);
-          });
-        });
-      });
-
-    $$("[data-expression]").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        const expression =
-          chip.dataset.expression ||
-          chip.dataset.value ||
-          chip.textContent.trim();
-
-        if (input) {
-          input.value = expression;
-          input.focus();
         }
-      });
-    });
-  }
-
-  /* ========================================================
-     GENERIC ENGINE CALLER
-  ======================================================== */
-
-  function callEngine(engine, method, args) {
-    if (
-      engine &&
-      typeof engine[method] === "function"
-    ) {
-      return engine[method](...args);
+      );
     }
 
-    return null;
+    $$(".calculator-modes [data-calculator-mode], .calculator-modes [data-mode], .calculator-mode-selector [data-calculator-mode], .calculator-mode-selector [data-mode]")
+      .forEach((button) => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            state.calculatorMode =
+              button.dataset.calculatorMode ||
+              button.dataset.mode ||
+              state.calculatorMode;
+
+            const parent =
+              button.parentElement;
+
+            if (parent) {
+
+              parent
+                .querySelectorAll(
+                  "button"
+                )
+                .forEach((item) => {
+
+                  item.classList.toggle(
+                    "active",
+                    item === button
+                  );
+
+                });
+
+            }
+
+          }
+        );
+
+      });
+
+    $$("[data-expression]").forEach(
+      (chip) => {
+
+        chip.addEventListener(
+          "click",
+          () => {
+
+            const expression =
+              chip.dataset.expression ||
+              chip.dataset.value ||
+              chip.textContent.trim();
+
+            if (input) {
+
+              input.value =
+                expression;
+
+              input.focus();
+
+            }
+
+          }
+        );
+
+      }
+    );
   }
 
   /* ========================================================
@@ -460,80 +637,151 @@
   ======================================================== */
 
   function solveAlgebra() {
-    const input = $("#algebraInput");
+
+    const input =
+      $("#algebraInput");
+
     if (!input) return;
 
-    const expression = input.value.trim();
+    const expression =
+      input.value.trim();
 
     if (!expression) {
-      showError("Enter an equation or expression.", input);
+
+      showError(
+        "Enter an equation or expression.",
+        input
+      );
+
       return;
     }
 
     try {
+
       let result = null;
 
-      const engine = window.NOVERA_ALGEBRA;
+      const engine =
+        window.NOVERA_ALGEBRA;
 
       if (engine) {
-        const mode = state.algebraMode;
+
+        const mode =
+          state.algebraMode;
 
         if (
           mode === "linear" &&
-          typeof engine.solveLinear === "function"
+          typeof engine.solveLinear ===
+            "function"
         ) {
-          result = engine.solveLinear(expression);
+
+          result =
+            engine.solveLinear(
+              expression
+            );
+
         } else if (
           mode === "quadratic" &&
-          typeof engine.solveQuadratic === "function"
+          typeof engine.solveQuadratic ===
+            "function"
         ) {
-          result = engine.solveQuadratic(expression);
+
+          result =
+            engine.solveQuadratic(
+              expression
+            );
+
         } else if (
           mode === "simultaneous" &&
-          typeof engine.solveSimultaneous === "function"
+          typeof engine.solveSimultaneous ===
+            "function"
         ) {
-          result = engine.solveSimultaneous(expression);
+
+          result =
+            engine.solveSimultaneous(
+              expression
+            );
+
         } else if (
           mode === "ratio" &&
-          typeof engine.solveRatio === "function"
+          typeof engine.solveRatio ===
+            "function"
         ) {
-          result = engine.solveRatio(expression);
+
+          result =
+            engine.solveRatio(
+              expression
+            );
+
         } else if (
-          typeof engine.solve === "function"
+          typeof engine.solve ===
+            "function"
         ) {
-          result = engine.solve(expression, mode);
+
+          result =
+            engine.solve(
+              expression,
+              mode
+            );
         }
       }
 
       if (result === null) {
-        result = "Enter a valid algebra problem.";
+
+        result =
+          "Enter a valid algebra problem.";
       }
 
-      const answer = getAnswerBox($("#panel-algebra"));
-      displayAnswer(answer, result);
+      displayAnswer(
+        getAnswerBox(
+          $("#panel-algebra")
+        ),
+        result
+      );
 
-      addHistory("Algebra", expression, result);
+      addHistory(
+        "Algebra",
+        expression,
+        result
+      );
+
     } catch (error) {
+
       showError(
-        error.message || "Could not solve.",
+        error.message ||
+          "Could not solve.",
         input
       );
     }
   }
 
   function setupAlgebra() {
+
     $$(".algebra-mode-selector [data-algebra-mode], .algebra-mode-selector [data-mode]")
       .forEach((button) => {
-        button.addEventListener("click", () => {
-          state.algebraMode =
-            button.dataset.algebraMode ||
-            button.dataset.mode ||
-            state.algebraMode;
 
-          $$(".algebra-mode-selector button").forEach((b) => {
-            b.classList.toggle("active", b === button);
-          });
-        });
+        button.addEventListener(
+          "click",
+          () => {
+
+            state.algebraMode =
+              button.dataset.algebraMode ||
+              button.dataset.mode ||
+              state.algebraMode;
+
+            button.parentElement
+              ?.querySelectorAll("button")
+              .forEach((item) => {
+
+                item.classList.toggle(
+                  "active",
+                  item === button
+                );
+
+              });
+
+          }
+        );
+
       });
 
     const button =
@@ -541,18 +789,32 @@
       $('[data-action="solve-algebra"]');
 
     if (button) {
-      button.addEventListener("click", solveAlgebra);
+
+      button.addEventListener(
+        "click",
+        solveAlgebra
+      );
     }
 
-    const input = $("#algebraInput");
+    const input =
+      $("#algebraInput");
 
     if (input) {
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          solveAlgebra();
+
+      input.addEventListener(
+        "keydown",
+        (event) => {
+
+          if (
+            event.key === "Enter"
+          ) {
+
+            event.preventDefault();
+
+            solveAlgebra();
+          }
         }
-      });
+      );
     }
   }
 
@@ -561,18 +823,33 @@
   ======================================================== */
 
   function setupGraph() {
+
     $$(".graph-options [data-graph-type], .graph-options [data-mode]")
       .forEach((button) => {
-        button.addEventListener("click", () => {
-          state.graphMode =
-            button.dataset.graphType ||
-            button.dataset.mode ||
-            state.graphMode;
 
-          $$(".graph-options button").forEach((b) => {
-            b.classList.toggle("active", b === button);
-          });
-        });
+        button.addEventListener(
+          "click",
+          () => {
+
+            state.graphMode =
+              button.dataset.graphType ||
+              button.dataset.mode ||
+              state.graphMode;
+
+            button.parentElement
+              ?.querySelectorAll("button")
+              .forEach((item) => {
+
+                item.classList.toggle(
+                  "active",
+                  item === button
+                );
+
+              });
+
+          }
+        );
+
       });
 
     const button =
@@ -580,68 +857,104 @@
       $('[data-action="plot-graph"]');
 
     if (button) {
-      button.addEventListener("click", plotGraph);
+
+      button.addEventListener(
+        "click",
+        plotGraph
+      );
     }
   }
 
   function plotGraph() {
-    const input = $("#graphInput");
+
+    const input =
+      $("#graphInput");
+
     if (!input) return;
 
-    const expression = input.value.trim();
+    const expression =
+      input.value.trim();
 
     if (!expression) {
-      showError("Enter a function or equation.", input);
+
+      showError(
+        "Enter a function or equation.",
+        input
+      );
+
       return;
     }
 
     try {
+
       let result = null;
 
-      const engine = window.NOVERA_GRAPH;
+      const engine =
+        window.NOVERA_GRAPH;
 
       if (engine) {
+
         if (
-          typeof engine.plot === "function"
+          typeof engine.plot ===
+            "function"
         ) {
-          result = engine.plot(
-            expression,
-            state.graphMode
-          );
+
+          result =
+            engine.plot(
+              expression,
+              state.graphMode
+            );
+
         } else if (
-          typeof engine.generate === "function"
+          typeof engine.generate ===
+            "function"
         ) {
-          result = engine.generate(
-            expression,
-            state.graphMode
-          );
+
+          result =
+            engine.generate(
+              expression,
+              state.graphMode
+            );
+
         } else if (
-          typeof engine.solve === "function"
+          typeof engine.solve ===
+            "function"
         ) {
-          result = engine.solve(
-            expression,
-            state.graphMode
-          );
+
+          result =
+            engine.solve(
+              expression,
+              state.graphMode
+            );
         }
       }
 
-      const answer = getAnswerBox($("#panel-graph"));
+      const answer =
+        getAnswerBox(
+          $("#panel-graph")
+        );
 
       if (answer) {
+
         displayAnswer(
           answer,
-          result || "Graph generated."
+          result ||
+            "Graph generated."
         );
       }
 
       addHistory(
         "Graph",
         expression,
-        result || "Graph generated."
+        result ||
+          "Graph generated."
       );
+
     } catch (error) {
+
       showError(
-        error.message || "Could not generate graph.",
+        error.message ||
+          "Could not generate graph.",
         input
       );
     }
@@ -652,6 +965,7 @@
   ======================================================== */
 
   const physicsFields = {
+
     speed: [
       ["distance", "Distance"],
       ["time", "Time"]
@@ -676,138 +990,237 @@
       ["voltage", "Voltage"],
       ["resistance", "Resistance"]
     ]
+
   };
 
   function renderPhysicsFields() {
-    const container = $("#physicsFields");
+
+    const container =
+      $("#physicsFields");
 
     if (!container) return;
 
     const fields =
-      physicsFields[state.physicsMode] ||
+      physicsFields[
+        state.physicsMode
+      ] ||
       physicsFields.speed;
 
     container.innerHTML = "";
 
-    fields.forEach(([name, label]) => {
-      const wrapper = document.createElement("div");
-      wrapper.className = "field";
+    fields.forEach(
+      ([name, label]) => {
 
-      const title = document.createElement("label");
-      title.textContent = label;
+        const wrapper =
+          document.createElement(
+            "div"
+          );
 
-      const input = document.createElement("input");
-      input.type = "number";
-      input.step = "any";
-      input.dataset.field = name;
-      input.placeholder = label;
+        wrapper.className =
+          "input-group";
 
-      wrapper.appendChild(title);
-      wrapper.appendChild(input);
+        const title =
+          document.createElement(
+            "label"
+          );
 
-      container.appendChild(wrapper);
-    });
+        title.textContent =
+          label;
+
+        const input =
+          document.createElement(
+            "input"
+          );
+
+        input.type =
+          "number";
+
+        input.step =
+          "any";
+
+        input.inputMode =
+          "decimal";
+
+        input.dataset.field =
+          name;
+
+        input.className =
+          "main-input";
+
+        input.placeholder =
+          label;
+
+        wrapper.appendChild(
+          title
+        );
+
+        wrapper.appendChild(
+          input
+        );
+
+        container.appendChild(
+          wrapper
+        );
+      }
+    );
   }
 
   function calculatePhysics() {
-    const engine = window.NOVERA_PHYSICS;
-    const container = $("#physicsFields");
+
+    const container =
+      $("#physicsFields");
 
     if (!container) return;
 
     const values = {};
 
-    container.querySelectorAll("[data-field]").forEach((input) => {
-      values[input.dataset.field] =
-        safeNumber(input.value);
-    });
+    container
+      .querySelectorAll(
+        "[data-field]"
+      )
+      .forEach((input) => {
+
+        values[
+          input.dataset.field
+        ] =
+          safeNumber(
+            input.value
+          );
+
+      });
 
     try {
+
       let result = null;
 
+      const engine =
+        window.NOVERA_PHYSICS;
+
+      const mode =
+        state.physicsMode;
+
       if (engine) {
-        const mode = state.physicsMode;
 
         if (
           mode === "speed" &&
-          typeof engine.speed === "function"
+          typeof engine.speed ===
+            "function"
         ) {
-          result = engine.speed(
-            values.distance,
-            values.time
-          );
+
+          result =
+            engine.speed(
+              values.distance,
+              values.time
+            );
+
         } else if (
           mode === "force" &&
-          typeof engine.force === "function"
+          typeof engine.force ===
+            "function"
         ) {
-          result = engine.force(
-            values.mass,
-            values.acceleration
-          );
+
+          result =
+            engine.force(
+              values.mass,
+              values.acceleration
+            );
+
         } else if (
           mode === "energy" &&
-          typeof engine.kineticEnergy === "function"
+          typeof engine.kineticEnergy ===
+            "function"
         ) {
-          result = engine.kineticEnergy(
-            values.mass,
-            values.velocity
-          );
+
+          result =
+            engine.kineticEnergy(
+              values.mass,
+              values.velocity
+            );
+
         } else if (
           mode === "power" &&
-          typeof engine.power === "function"
+          typeof engine.power ===
+            "function"
         ) {
-          result = engine.power(
-            values.energy,
-            values.time
-          );
+
+          result =
+            engine.power(
+              values.energy,
+              values.time
+            );
+
         } else if (
           mode === "electricity" &&
-          typeof engine.electricalPower === "function"
+          typeof engine.electricalPower ===
+            "function"
         ) {
-          result = engine.electricalPower(
-            values.voltage,
-            values.resistance
-          );
+
+          result =
+            engine.electricalPower(
+              values.voltage,
+              values.resistance
+            );
         }
       }
 
       if (result === null) {
-        result = "Enter valid values.";
+
+        result =
+          "Enter valid values.";
       }
 
       displayAnswer(
-        getAnswerBox($("#panel-physics")),
+        getAnswerBox(
+          $("#panel-physics")
+        ),
         result
       );
 
       addHistory(
         "Physics",
-        state.physicsMode,
+        mode,
         result
       );
+
     } catch (error) {
+
       showError(
-        error.message || "Could not calculate.",
+        error.message ||
+          "Could not calculate.",
         container
       );
     }
   }
 
   function setupPhysics() {
+
     $$(".physics-selector [data-physics-mode], .physics-selector [data-mode]")
       .forEach((button) => {
-        button.addEventListener("click", () => {
-          state.physicsMode =
-            button.dataset.physicsMode ||
-            button.dataset.mode ||
-            state.physicsMode;
 
-          $$(".physics-selector button").forEach((b) => {
-            b.classList.toggle("active", b === button);
-          });
+        button.addEventListener(
+          "click",
+          () => {
 
-          renderPhysicsFields();
-        });
+            state.physicsMode =
+              button.dataset.physicsMode ||
+              button.dataset.mode ||
+              state.physicsMode;
+
+            button.parentElement
+              ?.querySelectorAll("button")
+              .forEach((item) => {
+
+                item.classList.toggle(
+                  "active",
+                  item === button
+                );
+
+              });
+
+            renderPhysicsFields();
+          }
+        );
+
       });
 
     const button =
@@ -815,6 +1228,7 @@
       $('[data-action="calculate-physics"]');
 
     if (button) {
+
       button.addEventListener(
         "click",
         calculatePhysics
@@ -829,6 +1243,7 @@
   ======================================================== */
 
   const chemistryFields = {
+
     moles: [
       ["mass", "Mass"],
       ["molarMass", "Molar mass"]
@@ -854,138 +1269,237 @@
       ["specificHeat", "Specific heat"],
       ["deltaTemperature", "Temperature change"]
     ]
+
   };
 
   function renderChemistryFields() {
-    const container = $("#chemistryFields");
+
+    const container =
+      $("#chemistryFields");
 
     if (!container) return;
 
     const fields =
-      chemistryFields[state.chemistryMode] ||
+      chemistryFields[
+        state.chemistryMode
+      ] ||
       chemistryFields.moles;
 
     container.innerHTML = "";
 
-    fields.forEach(([name, label]) => {
-      const wrapper = document.createElement("div");
-      wrapper.className = "field";
+    fields.forEach(
+      ([name, label]) => {
 
-      const title = document.createElement("label");
-      title.textContent = label;
+        const wrapper =
+          document.createElement(
+            "div"
+          );
 
-      const input = document.createElement("input");
-      input.type = "number";
-      input.step = "any";
-      input.dataset.field = name;
-      input.placeholder = label;
+        wrapper.className =
+          "input-group";
 
-      wrapper.appendChild(title);
-      wrapper.appendChild(input);
+        const title =
+          document.createElement(
+            "label"
+          );
 
-      container.appendChild(wrapper);
-    });
+        title.textContent =
+          label;
+
+        const input =
+          document.createElement(
+            "input"
+          );
+
+        input.type =
+          "number";
+
+        input.step =
+          "any";
+
+        input.inputMode =
+          "decimal";
+
+        input.dataset.field =
+          name;
+
+        input.className =
+          "main-input";
+
+        input.placeholder =
+          label;
+
+        wrapper.appendChild(
+          title
+        );
+
+        wrapper.appendChild(
+          input
+        );
+
+        container.appendChild(
+          wrapper
+        );
+      }
+    );
   }
 
   function calculateChemistry() {
-    const engine = window.NOVERA_CHEMISTRY;
-    const container = $("#chemistryFields");
+
+    const container =
+      $("#chemistryFields");
 
     if (!container) return;
 
     const values = {};
 
-    container.querySelectorAll("[data-field]").forEach((input) => {
-      values[input.dataset.field] =
-        safeNumber(input.value);
-    });
+    container
+      .querySelectorAll(
+        "[data-field]"
+      )
+      .forEach((input) => {
+
+        values[
+          input.dataset.field
+        ] =
+          safeNumber(
+            input.value
+          );
+
+      });
 
     try {
+
       let result = null;
 
+      const engine =
+        window.NOVERA_CHEMISTRY;
+
+      const mode =
+        state.chemistryMode;
+
       if (engine) {
-        const mode = state.chemistryMode;
 
         if (
           mode === "moles" &&
-          typeof engine.molesFromMass === "function"
+          typeof engine.molesFromMass ===
+            "function"
         ) {
-          result = engine.molesFromMass(
-            values.mass,
-            values.molarMass
-          );
+
+          result =
+            engine.molesFromMass(
+              values.mass,
+              values.molarMass
+            );
+
         } else if (
           mode === "molarity" &&
-          typeof engine.molarity === "function"
+          typeof engine.molarity ===
+            "function"
         ) {
-          result = engine.molarity(
-            values.moles,
-            values.volume
-          );
+
+          result =
+            engine.molarity(
+              values.moles,
+              values.volume
+            );
+
         } else if (
           mode === "gas" &&
-          typeof engine.idealGasVolume === "function"
+          typeof engine.idealGasVolume ===
+            "function"
         ) {
-          result = engine.idealGasVolume(
-            values.pressure,
-            values.temperature
-          );
+
+          result =
+            engine.idealGasVolume(
+              values.pressure,
+              values.temperature
+            );
+
         } else if (
           mode === "ph" &&
-          typeof engine.pH === "function"
+          typeof engine.pH ===
+            "function"
         ) {
-          result = engine.pH(
-            values.concentration
-          );
+
+          result =
+            engine.pH(
+              values.concentration
+            );
+
         } else if (
           mode === "heat" &&
-          typeof engine.heat === "function"
+          typeof engine.heat ===
+            "function"
         ) {
-          result = engine.heat(
-            values.mass,
-            values.specificHeat,
-            values.deltaTemperature
-          );
+
+          result =
+            engine.heat(
+              values.mass,
+              values.specificHeat,
+              values.deltaTemperature
+            );
         }
       }
 
       if (result === null) {
-        result = "Enter valid values.";
+
+        result =
+          "Enter valid values.";
       }
 
       displayAnswer(
-        getAnswerBox($("#panel-chemistry")),
+        getAnswerBox(
+          $("#panel-chemistry")
+        ),
         result
       );
 
       addHistory(
         "Chemistry",
-        state.chemistryMode,
+        mode,
         result
       );
+
     } catch (error) {
+
       showError(
-        error.message || "Could not calculate.",
+        error.message ||
+          "Could not calculate.",
         container
       );
     }
   }
 
   function setupChemistry() {
+
     $$(".chemistry-selector [data-chemistry-mode], .chemistry-selector [data-mode]")
       .forEach((button) => {
-        button.addEventListener("click", () => {
-          state.chemistryMode =
-            button.dataset.chemistryMode ||
-            button.dataset.mode ||
-            state.chemistryMode;
 
-          $$(".chemistry-selector button").forEach((b) => {
-            b.classList.toggle("active", b === button);
-          });
+        button.addEventListener(
+          "click",
+          () => {
 
-          renderChemistryFields();
-        });
+            state.chemistryMode =
+              button.dataset.chemistryMode ||
+              button.dataset.mode ||
+              state.chemistryMode;
+
+            button.parentElement
+              ?.querySelectorAll("button")
+              .forEach((item) => {
+
+                item.classList.toggle(
+                  "active",
+                  item === button
+                );
+
+              });
+
+            renderChemistryFields();
+          }
+        );
+
       });
 
     const button =
@@ -993,6 +1507,7 @@
       $('[data-action="calculate-chemistry"]');
 
     if (button) {
+
       button.addEventListener(
         "click",
         calculateChemistry
@@ -1007,6 +1522,7 @@
   ======================================================== */
 
   function parseNumbers(value) {
+
     return String(value || "")
       .split(/[\s,;]+/)
       .map(Number)
@@ -1014,122 +1530,190 @@
   }
 
   function calculateStatistics() {
-    const input = $("#statisticsInput");
+
+    const input =
+      $("#statisticsInput");
+
     if (!input) return;
 
-    const numbers = parseNumbers(input.value);
+    const numbers =
+      parseNumbers(
+        input.value
+      );
 
     if (!numbers.length) {
+
       showError(
         "Enter numbers separated by commas.",
         input
       );
+
       return;
     }
 
     try {
+
       let result = null;
-      const engine = window.NOVERA_STATISTICS;
+
+      const engine =
+        window.NOVERA_STATISTICS;
+
+      const mode =
+        state.statisticsMode;
 
       if (engine) {
-        const mode = state.statisticsMode;
 
         if (
           mode === "mean" &&
-          typeof engine.mean === "function"
+          typeof engine.mean ===
+            "function"
         ) {
-          result = engine.mean(numbers);
+
+          result =
+            engine.mean(numbers);
+
         } else if (
           mode === "median" &&
-          typeof engine.median === "function"
+          typeof engine.median ===
+            "function"
         ) {
-          result = engine.median(numbers);
+
+          result =
+            engine.median(numbers);
+
         } else if (
           mode === "mode" &&
-          typeof engine.mode === "function"
+          typeof engine.mode ===
+            "function"
         ) {
-          result = engine.mode(numbers);
+
+          result =
+            engine.mode(numbers);
+
         } else if (
           mode === "range" &&
-          typeof engine.range === "function"
+          typeof engine.range ===
+            "function"
         ) {
-          result = engine.range(numbers);
+
+          result =
+            engine.range(numbers);
+
         } else if (
           mode === "sd" &&
-          typeof engine.standardDeviation === "function"
+          typeof engine.standardDeviation ===
+            "function"
         ) {
-          result = engine.standardDeviation(numbers);
+
+          result =
+            engine.standardDeviation(
+              numbers
+            );
         }
       }
 
       if (result === null) {
-        const sum = numbers.reduce(
-          (a, b) => a + b,
-          0
-        );
 
-        if (state.statisticsMode === "mean") {
-          result = sum / numbers.length;
-        } else if (
-          state.statisticsMode === "median"
-        ) {
-          const sorted = [...numbers].sort(
-            (a, b) => a - b
+        const sum =
+          numbers.reduce(
+            (a, b) => a + b,
+            0
           );
 
+        if (
+          mode === "mean"
+        ) {
+
+          result =
+            sum / numbers.length;
+
+        } else if (
+          mode === "median"
+        ) {
+
+          const sorted =
+            [...numbers].sort(
+              (a, b) => a - b
+            );
+
           const middle =
-            Math.floor(sorted.length / 2);
+            Math.floor(
+              sorted.length / 2
+            );
 
           result =
             sorted.length % 2
               ? sorted[middle]
-              : (sorted[middle - 1] +
-                  sorted[middle]) /
-                2;
+              : (
+                  sorted[middle - 1] +
+                  sorted[middle]
+                ) / 2;
+
         } else if (
-          state.statisticsMode === "range"
+          mode === "range"
         ) {
+
           result =
             Math.max(...numbers) -
             Math.min(...numbers);
+
         } else if (
-          state.statisticsMode === "mode"
+          mode === "mode"
         ) {
+
           const counts = {};
 
-          numbers.forEach((n) => {
-            counts[n] =
-              (counts[n] || 0) + 1;
-          });
+          numbers.forEach(
+            (n) => {
+
+              counts[n] =
+                (counts[n] || 0) + 1;
+
+            }
+          );
 
           const max =
-            Math.max(...Object.values(counts));
+            Math.max(
+              ...Object.values(
+                counts
+              )
+            );
 
-          result = Object.keys(counts)
-            .filter(
-              (key) =>
-                counts[key] === max
-            )
-            .join(", ");
+          result =
+            Object.keys(counts)
+              .filter(
+                (key) =>
+                  counts[key] === max
+              )
+              .join(", ");
+
         } else if (
-          state.statisticsMode === "sd"
+          mode === "sd"
         ) {
+
           const mean =
             sum / numbers.length;
 
-          result = Math.sqrt(
-            numbers.reduce(
-              (total, n) =>
-                total +
-                Math.pow(n - mean, 2),
-              0
-            ) / numbers.length
-          );
+          result =
+            Math.sqrt(
+              numbers.reduce(
+                (total, n) =>
+                  total +
+                  Math.pow(
+                    n - mean,
+                    2
+                  ),
+                0
+              ) /
+                numbers.length
+            );
         }
       }
 
       displayAnswer(
-        getAnswerBox($("#panel-statistics")),
+        getAnswerBox(
+          $("#panel-statistics")
+        ),
         result
       );
 
@@ -1138,51 +1722,82 @@
         input.value,
         result
       );
+
     } catch (error) {
+
       showError(
-        error.message || "Could not analyse data.",
+        error.message ||
+          "Could not analyse data.",
         input
       );
     }
   }
 
   function setupStatistics() {
+
     $$(".statistics-selector [data-statistics-mode], .statistics-selector [data-mode]")
       .forEach((button) => {
-        button.addEventListener("click", () => {
-          state.statisticsMode =
-            button.dataset.statisticsMode ||
-            button.dataset.mode ||
-            state.statisticsMode;
 
-          $$(".statistics-selector button").forEach((b) => {
-            b.classList.toggle("active", b === button);
-          });
-        });
+        button.addEventListener(
+          "click",
+          () => {
+
+            state.statisticsMode =
+              button.dataset.statisticsMode ||
+              button.dataset.mode ||
+              state.statisticsMode;
+
+            button.parentElement
+              ?.querySelectorAll("button")
+              .forEach((item) => {
+
+                item.classList.toggle(
+                  "active",
+                  item === button
+                );
+
+              });
+
+          }
+        );
+
       });
 
     const button =
+      $("#calculateStatistics") ||
       $("#analyseStatistics") ||
       $("#statisticsAnalyse") ||
-      $("#calculateStatistics") ||
       $('[data-action="calculate-statistics"]');
 
     if (button) {
+
       button.addEventListener(
         "click",
         calculateStatistics
       );
     }
 
-    const input = $("#statisticsInput");
+    const input =
+      $("#statisticsInput");
 
     if (input) {
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          calculateStatistics();
+
+      input.addEventListener(
+        "keydown",
+        (event) => {
+
+          if (
+            event.key === "Enter" &&
+            !event.shiftKey
+          ) {
+
+            event.preventDefault();
+
+            calculateStatistics();
+          }
+
         }
-      });
+      );
     }
   }
 
@@ -1191,60 +1806,82 @@
   ======================================================== */
 
   function setupTheme() {
-    const button = $("#themeToggle");
+
+    const button =
+      $("#themeToggle");
 
     if (!button) return;
 
-    button.addEventListener("click", () => {
-      const current =
-        document.documentElement.dataset.theme ||
-        document.body.dataset.theme;
+    button.addEventListener(
+      "click",
+      () => {
 
-      const next =
-        current === "light"
-          ? "dark"
-          : "light";
+        const current =
+          document.documentElement
+            .dataset.theme ||
+          document.body.dataset.theme ||
+          "dark";
 
-      document.documentElement.dataset.theme =
-        next;
+        const next =
+          current === "light"
+            ? "dark"
+            : "light";
 
-      document.body.dataset.theme = next;
+        document.documentElement
+          .dataset.theme =
+          next;
 
-      try {
-        localStorage.setItem(
-          "novera_theme",
-          next
-        );
-      } catch (error) {}
+        document.body.dataset.theme =
+          next;
 
-      updateThemeIcon();
-    });
+        try {
+
+          localStorage.setItem(
+            THEME_KEY,
+            next
+          );
+
+        } catch (error) {}
+
+        updateThemeIcon();
+      }
+    );
 
     try {
+
       const saved =
         localStorage.getItem(
-          "novera_theme"
+          THEME_KEY
         );
 
-      if (saved) {
-        document.documentElement.dataset.theme =
+      if (
+        saved === "light" ||
+        saved === "dark"
+      ) {
+
+        document.documentElement
+          .dataset.theme =
           saved;
 
         document.body.dataset.theme =
           saved;
       }
+
     } catch (error) {}
 
     updateThemeIcon();
   }
 
   function updateThemeIcon() {
-    const icon = $("#themeIcon");
+
+    const icon =
+      $("#themeIcon");
 
     if (!icon) return;
 
     const theme =
-      document.documentElement.dataset.theme ||
+      document.documentElement
+        .dataset.theme ||
       document.body.dataset.theme ||
       "dark";
 
@@ -1255,33 +1892,54 @@
   }
 
   /* ========================================================
-     HERO BUTTONS
+     HERO
   ======================================================== */
 
   function setupHeroButtons() {
-    const start = $("#startToolkit");
+
+    const start =
+      $("#startToolkit");
 
     if (start) {
-      start.addEventListener("click", () => {
-        activateTool("calculator");
-      });
+
+      start.addEventListener(
+        "click",
+        () => {
+
+          activateTool(
+            "calculator",
+            true
+          );
+
+        }
+      );
     }
 
-    const all = $("#showAllTools");
+    const all =
+      $("#showAllTools");
 
     if (all) {
-      all.addEventListener("click", () => {
-        const section =
-          $(".tool-grid") ||
-          $(".tool-cards") ||
-          $(".tools-section");
 
-        if (section) {
-          section.scrollIntoView({
-            behavior: "smooth"
-          });
+      all.addEventListener(
+        "click",
+        () => {
+
+          const section =
+            $("#tools") ||
+            $(".tool-selector-section") ||
+            $(".tool-grid");
+
+          if (section) {
+
+            section.scrollIntoView({
+              behavior: "smooth",
+              block: "start"
+            });
+
+          }
+
         }
-      });
+      );
     }
   }
 
@@ -1290,38 +1948,81 @@
   ======================================================== */
 
   function setupClearWorkspace() {
-    const button = $("#clearWorkspace");
+
+    const button =
+      $("#clearWorkspace");
 
     if (!button) return;
 
-    button.addEventListener("click", () => {
-      const panel =
-        findPanel(state.activeTool);
+    button.addEventListener(
+      "click",
+      () => {
 
-      if (!panel) return;
+        const panel =
+          findPanel(
+            state.activeTool
+          );
 
-      panel
-        .querySelectorAll("input, textarea")
-        .forEach((input) => {
-          input.value = "";
-        });
+        if (!panel) return;
 
-      panel
-        .querySelectorAll(
-          ".result-value, .tool-result, .result, [data-result], .answer"
-        )
-        .forEach((result) => {
-          result.textContent = "";
-        });
+        panel
+          .querySelectorAll(
+            "input, textarea"
+          )
+          .forEach(
+            (input) => {
+              input.value = "";
+            }
+          );
 
-      if (state.activeTool === "physics") {
-        renderPhysicsFields();
+        panel
+          .querySelectorAll(
+            ".answer-value, .result-value, .tool-result, .result, [data-result], .answer"
+          )
+          .forEach(
+            (result) => {
+              result.textContent = "—";
+            }
+          );
+
+        if (
+          state.activeTool ===
+          "physics"
+        ) {
+
+          renderPhysicsFields();
+        }
+
+        if (
+          state.activeTool ===
+          "chemistry"
+        ) {
+
+          renderChemistryFields();
+        }
+
+        if (
+          state.activeTool ===
+          "graph"
+        ) {
+
+          const graph =
+            $("#graphDisplay");
+
+          if (graph) {
+
+            graph.innerHTML = `
+              <div class="graph-empty-state">
+                <span class="graph-empty-icon">∿</span>
+                <p>Your graph will appear here.</p>
+              </div>
+            `;
+
+          }
+        }
+
       }
-
-      if (state.activeTool === "chemistry") {
-        renderChemistryFields();
-      }
-    });
+    );
   }
 
   /* ========================================================
@@ -1329,6 +2030,7 @@
   ======================================================== */
 
   function setupMobileMenu() {
+
     const button =
       $("#menuToggle") ||
       $("#mobileMenuToggle");
@@ -1339,26 +2041,46 @@
 
     if (!button || !menu) return;
 
-    button.addEventListener("click", () => {
-      menu.classList.toggle("open");
-      button.classList.toggle("open");
-    });
+    button.addEventListener(
+      "click",
+      () => {
+
+        menu.classList.toggle(
+          "open"
+        );
+
+        button.classList.toggle(
+          "open"
+        );
+
+      }
+    );
   }
 
   /* ========================================================
-     REVEAL ANIMATION
+     REVEAL
   ======================================================== */
 
   function setupReveal() {
-    const elements = $$(".reveal");
+
+    const elements =
+      $$(".reveal");
 
     if (!elements.length) return;
 
     if (
-      !("IntersectionObserver" in window)
+      !(
+        "IntersectionObserver" in
+        window
+      )
     ) {
-      elements.forEach((el) =>
-        el.classList.add("revealed")
+
+      elements.forEach(
+        (el) => {
+          el.classList.add(
+            "revealed"
+          );
+        }
       );
 
       return;
@@ -1367,25 +2089,37 @@
     const observer =
       new IntersectionObserver(
         (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add(
-                "revealed"
-              );
 
-              observer.unobserve(
-                entry.target
-              );
+          entries.forEach(
+            (entry) => {
+
+              if (
+                entry.isIntersecting
+              ) {
+
+                entry.target.classList.add(
+                  "revealed"
+                );
+
+                observer.unobserve(
+                  entry.target
+                );
+
+              }
+
             }
-          });
+          );
+
         },
         {
           threshold: 0.08
         }
       );
 
-    elements.forEach((el) =>
-      observer.observe(el)
+    elements.forEach(
+      (el) => {
+        observer.observe(el);
+      }
     );
   }
 
@@ -1394,50 +2128,50 @@
   ======================================================== */
 
   function setupKeyboard() {
+
     document.addEventListener(
       "keydown",
       (event) => {
+
         if (
           event.ctrlKey &&
           event.key === "Enter"
         ) {
+
           event.preventDefault();
 
-          if (
-            state.activeTool ===
-            "calculator"
+          switch (
+            state.activeTool
           ) {
-            calculateCalculator();
+
+            case "calculator":
+              calculateCalculator();
+              break;
+
+            case "algebra":
+              solveAlgebra();
+              break;
+
+            case "graph":
+              plotGraph();
+              break;
+
+            case "physics":
+              calculatePhysics();
+              break;
+
+            case "chemistry":
+              calculateChemistry();
+              break;
+
+            case "statistics":
+              calculateStatistics();
+              break;
+
           }
 
-          if (
-            state.activeTool ===
-            "algebra"
-          ) {
-            solveAlgebra();
-          }
-
-          if (
-            state.activeTool ===
-            "physics"
-          ) {
-            calculatePhysics();
-          }
-
-          if (
-            state.activeTool ===
-            "chemistry"
-          ) {
-            calculateChemistry();
-          }
-
-          if (
-            state.activeTool ===
-            "statistics"
-          ) {
-            calculateStatistics();
-          }
         }
+
       }
     );
   }
@@ -1447,6 +2181,7 @@
   ======================================================== */
 
   function init() {
+
     setupToolCards();
 
     setupCalculator();
@@ -1462,10 +2197,14 @@
     setupMobileMenu();
     setupReveal();
     setupKeyboard();
+    setupHistory();
 
     loadHistory();
 
-    activateTool("calculator");
+    activateTool(
+      "calculator",
+      false
+    );
   }
 
   /* ========================================================
@@ -1473,26 +2212,48 @@
   ======================================================== */
 
   window.NOVERA_TOOLKIT = {
+
     state,
+
     activateTool,
+
     calculateCalculator,
+
     solveAlgebra,
+
     plotGraph,
+
     calculatePhysics,
+
     calculateChemistry,
+
     calculateStatistics,
+
     clearHistory
+
   };
+
+  /* ========================================================
+     START
+  ======================================================== */
 
   if (
     document.readyState ===
     "loading"
   ) {
+
     document.addEventListener(
       "DOMContentLoaded",
-      init
+      init,
+      {
+        once: true
+      }
     );
+
   } else {
+
     init();
+
   }
+
 })();
